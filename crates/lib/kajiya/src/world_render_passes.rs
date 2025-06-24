@@ -1,8 +1,8 @@
 use crate::{
     frame_desc::WorldFrameDesc,
     renderers::{
-        deferred::light_gbuffer, motion_blur::motion_blur, raster_meshes::*,
-        reference::reference_path_trace, shadows::trace_sun_shadow_mask, GbufferDepth,
+        GbufferDepth, deferred::light_gbuffer, motion_blur::motion_blur, raster_meshes::*,
+        reference::reference_path_trace, shadows::trace_sun_shadow_mask,
     },
     world_renderer::{RenderDebugMode, WorldRenderer},
 };

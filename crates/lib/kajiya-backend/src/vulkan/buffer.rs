@@ -65,7 +65,7 @@ impl BufferDesc {
     }
 }
 
-impl Device<'_> {
+impl Device {
     pub(crate) fn create_buffer_impl(
         raw: &ash::Device,
         allocator: &mut gpu_allocator::vulkan::Allocator,

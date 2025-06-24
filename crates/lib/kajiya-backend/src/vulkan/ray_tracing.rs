@@ -75,7 +75,7 @@ pub struct RayTracingAccelerationScratchBuffer {
 
 const RT_TLAS_SCRATCH_BUFFER_SIZE: usize = 256 * 1024;
 
-impl Device<'_> {
+impl Device {
     pub fn create_ray_tracing_acceleration_scratch_buffer(
         &self,
     ) -> Result<RayTracingAccelerationScratchBuffer, BackendError> {
@@ -290,8 +290,8 @@ impl Device<'_> {
 
         log::info!(
             "Acceleration structure size: {}, scratch size: {}",
-            memory_requirements.acceleration_structure_size,
-            memory_requirements.build_scratch_size
+            size_info.acceleration_structure_size,
+            size_info.build_scratch_size
         );
 
         let backing_buffer_size: usize =

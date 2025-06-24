@@ -30,10 +30,10 @@ fn select_surface_format(formats: Vec<vk::SurfaceFormatKHR>) -> Option<vk::Surfa
     }
 }
 
-pub struct RenderBackend<'a> {
-    pub device: Arc<device::Device<'a>>,
+pub struct RenderBackend {
+    pub device: Arc<device::Device>,
     pub surface: Arc<surface::Surface>,
-    pub swapchain: swapchain::Swapchain<'a>,
+    pub swapchain: swapchain::Swapchain,
 }
 
 #[derive(Clone, Copy)]
@@ -44,7 +44,7 @@ pub struct RenderBackendConfig {
     pub device_index: Option<usize>,
 }
 
-impl RenderBackend<'_> {
+impl RenderBackend {
     pub fn new<T>(window: &T, config: RenderBackendConfig) -> anyhow::Result<Self>
     where
         T: HasDisplayHandle + HasWindowHandle,

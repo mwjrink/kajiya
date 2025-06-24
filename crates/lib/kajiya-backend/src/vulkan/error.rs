@@ -32,7 +32,7 @@ impl CrashMarkerNames {
     }
 }
 
-impl Device<'_> {
+impl Device {
     pub fn record_crash_marker(&self, cb: &CommandBuffer, name: String) {
         let mut names = self.crash_marker_names.lock();
         let idx = names.insert_name(name);

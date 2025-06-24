@@ -1,7 +1,8 @@
 // Based on `import.rs` in the `gltf` crate, but modified not to load images (we do that separately).
 
+use base64::{DecodeSliceError::DecodeError, Engine};
 use bytes::Bytes;
-use gltf::{buffer, image, Document, Error, Gltf, Result};
+use gltf::{Document, Error, Gltf, Result, buffer, image};
 use std::{fs, io, path::Path};
 
 use crate::image::ImageSource;
@@ -128,7 +129,9 @@ pub fn import_image_data(
 
                 match Scheme::parse(uri) {
                     Scheme::Data(Some(_mime_type), base64) => {
-                        let bytes = base64::decode(base64).map_err(Error::Base64)?;
+                        let bytes = base64::prelude::BASE64_STANDARD
+                            .decode(base64)
+                            .map_err(Error::Base64)?;
                         images.push(ImageSource::Memory(Bytes::from(bytes)));
                     }
                     Scheme::Data(None, ..) => return Err(Error::ExternalReferenceInSliceImport),

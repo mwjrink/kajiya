@@ -14,4 +14,4 @@ lazy_static = "1.4"
 log = "0.4"
 parking_lot = "0.12"
 puffin = "0.19.1"
-turbosloth = { git = "https://github.com/h3r2tic/turbosloth.git", rev = "92030af" }
+turbosloth = { path = "/home/max/dev/turbosloth" }

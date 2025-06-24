@@ -1,11 +1,11 @@
 use std::{
-    collections::{hash_map, HashMap},
+    collections::{HashMap, hash_map},
     sync::Arc,
 };
 
 use anyhow::Context;
 
-use kajiya_backend::{vk_sync::AccessType, Device, Image, ImageDesc};
+use kajiya_backend::{Device, Image, ImageDesc, vk_sync::AccessType};
 
 use super::{
     Buffer, BufferDesc, ExportableGraphResource, ExportedHandle, Handle, RenderGraph, Resource,
@@ -127,7 +127,7 @@ impl TemporalRenderGraph {
     pub fn new(state: TemporalRenderGraphState, device: Arc<Device>) -> Self {
         Self {
             rg: RenderGraph::new(),
-            device,
+            device: device.clone(),
             temporal_state: state,
         }
     }

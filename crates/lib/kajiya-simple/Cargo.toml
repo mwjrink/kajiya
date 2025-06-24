@@ -13,7 +13,7 @@ anyhow = "1.0"
 glam = { version = "0.30", features = ["serde"] }
 log = "0.4"
 puffin = "0.19.1"
-turbosloth = { git = "https://github.com/h3r2tic/turbosloth.git", rev = "92030af" }
+turbosloth = { path = "/home/max/dev/turbosloth" }
 winit = "0.30"
 
 puffin_http = { version = "0.16.1", optional = true }

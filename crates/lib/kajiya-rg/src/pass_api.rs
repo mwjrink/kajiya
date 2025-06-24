@@ -542,10 +542,10 @@ impl<'api, 'a, 'exec_params, 'constants>
                 .ray_tracing_pipeline_ext
                 .cmd_trace_rays_indirect(
                     self.api.cb.raw,
-                    std::slice::from_ref(&self.pipeline.sbt.raygen_shader_binding_table),
-                    std::slice::from_ref(&self.pipeline.sbt.miss_shader_binding_table),
-                    std::slice::from_ref(&self.pipeline.sbt.hit_shader_binding_table),
-                    std::slice::from_ref(&self.pipeline.sbt.callable_shader_binding_table),
+                    &self.pipeline.sbt.raygen_shader_binding_table,
+                    &self.pipeline.sbt.miss_shader_binding_table,
+                    &self.pipeline.sbt.hit_shader_binding_table,
+                    &self.pipeline.sbt.callable_shader_binding_table,
                     indirect_device_address,
                 );
         }

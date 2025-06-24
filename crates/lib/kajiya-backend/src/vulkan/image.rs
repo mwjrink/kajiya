@@ -248,7 +248,7 @@ impl Default for ImageViewDesc {
     }
 }
 
-impl Device<'_> {
+impl Device {
     pub fn create_image(
         &self,
         desc: ImageDesc,

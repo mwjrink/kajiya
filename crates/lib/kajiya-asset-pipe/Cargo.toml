@@ -18,4 +18,4 @@ glam = "0.30"
 log = "0.4"
 num_cpus = "1.13"
 smol = "2.0.2"
-turbosloth = { git = "https://github.com/h3r2tic/turbosloth.git", rev = "92030af" }
+turbosloth = { path = "/home/max/dev/turbosloth" }

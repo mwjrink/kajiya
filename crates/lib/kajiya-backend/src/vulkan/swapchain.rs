@@ -12,7 +12,7 @@ pub struct SwapchainDesc {
     pub vsync: bool,
 }
 
-pub struct Swapchain<'a> {
+pub struct Swapchain {
     pub(crate) fns: ash::khr::swapchain::Device,
     pub(crate) raw: vk::SwapchainKHR,
     pub desc: SwapchainDesc,
@@ -25,7 +25,7 @@ pub struct Swapchain<'a> {
 
     // Keep a reference in order not to drop after the device
     #[allow(dead_code)]
-    pub(crate) device: Arc<Device<'a>>,
+    pub(crate) device: Arc<Device>,
 
     // Ditto
     #[allow(dead_code)]
@@ -43,7 +43,7 @@ pub enum SwapchainAcquireImageErr {
     RecreateFramebuffer,
 }
 
-impl<'a> Swapchain<'a> {
+impl Swapchain {
     pub fn enumerate_surface_formats(
         device: &Arc<Device>,
         surface: &Surface,
@@ -55,11 +55,7 @@ impl<'a> Swapchain<'a> {
         }
     }
 
-    pub fn new(
-        device: &Arc<Device<'a>>,
-        surface: &Arc<Surface>,
-        desc: SwapchainDesc,
-    ) -> Result<Self> {
+    pub fn new(device: &Arc<Device>, surface: &Arc<Surface>, desc: SwapchainDesc) -> Result<Self> {
         let surface_capabilities = unsafe {
             surface
                 .fns
@@ -292,7 +288,7 @@ impl<'a> Swapchain<'a> {
     }
 }
 
-impl Drop for Swapchain<'_> {
+impl Drop for Swapchain {
     fn drop(&mut self) {
         unsafe {
             self.fns.destroy_swapchain(self.raw, None);

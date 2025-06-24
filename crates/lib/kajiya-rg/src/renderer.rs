@@ -101,8 +101,9 @@ impl Renderer {
         let frame_descriptor_set =
             Self::create_frame_descriptor_set(backend, &dynamic_constants.buffer);
 
+        let device = backend.device.clone();
         Ok(Renderer {
-            device: backend.device.clone(),
+            device: device,
             dynamic_constants,
             frame_descriptor_set,
             pipeline_cache: PipelineCache::new(&LazyCache::create()),

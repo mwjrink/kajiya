@@ -37,7 +37,7 @@ impl ImGuiBackend {
     ) -> Self {
         setup_imgui_style(imgui);
 
-        let mut imgui_platform = WinitPlatform::init(imgui);
+        let mut imgui_platform = WinitPlatform::new(imgui);
         imgui_platform.attach_window(imgui.io_mut(), window, HiDpiMode::Locked(1.0));
 
         {
@@ -115,7 +115,7 @@ impl ImGuiBackend {
         &mut self,
         window: &winit::window::Window,
         imgui: &mut imgui::Context,
-        event: &winit::event::Event<'_, ()>,
+        event: &winit::event::Event<()>,
     ) {
         self.imgui_platform
             .handle_event(imgui.io_mut(), window, event);
@@ -126,25 +126,25 @@ impl ImGuiBackend {
         window: &winit::window::Window,
         imgui: &'a mut imgui::Context,
         dt: f32,
-    ) -> imgui::Ui<'a> {
+    ) {
         self.imgui_platform
             .prepare_frame(imgui.io_mut(), window)
             .expect("Failed to prepare frame");
         imgui.io_mut().delta_time = dt;
-        imgui.frame()
+        // imgui.frame()
     }
 
-    pub fn finish_frame(
+    pub fn finish_frame<'a>(
         &mut self,
-        ui: imgui::Ui<'_>,
+        imgui: &'a mut imgui::Context,
         window: &winit::window::Window,
         ui_renderer: &mut UiRenderer,
     ) {
         let (ui_draw_data, ui_target_image) = {
-            self.imgui_platform.prepare_render(&ui, window);
+            self.imgui_platform.prepare_render(imgui.frame(), window);
 
             let ui_draw_data: &'static imgui::DrawData =
-                unsafe { std::mem::transmute(ui.render()) };
+                unsafe { std::mem::transmute(imgui.render()) };
 
             (ui_draw_data, self.inner.lock().get_target_image().unwrap())
         };

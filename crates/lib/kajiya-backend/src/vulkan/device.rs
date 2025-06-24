@@ -140,7 +140,7 @@ impl DeviceFrame {
     }
 }
 
-pub struct Device<'a> {
+pub struct Device {
     pub raw: ash::Device,
     pub(crate) pdevice: Arc<PhysicalDevice>,
     pub(crate) instance: Arc<super::instance::Instance>,
@@ -155,7 +155,7 @@ pub struct Device<'a> {
     pub acceleration_structure_ext: ash::khr::acceleration_structure::Device,
     pub ray_tracing_pipeline_ext: ash::khr::ray_tracing_pipeline::Device,
     // pub ray_query_ext: khr::RayQuery,
-    pub ray_tracing_pipeline_properties: vk::PhysicalDeviceRayTracingPipelinePropertiesKHR<'a>,
+    pub ray_tracing_pipeline_properties: vk::PhysicalDeviceRayTracingPipelinePropertiesKHR<'static>,
 
     frames: [Mutex<Arc<DeviceFrame>>; 2],
 
@@ -166,11 +166,11 @@ pub struct Device<'a> {
 // in place that `Arc<DeviceFrame>` doesn't get retained by the user,
 // but it begs for a clearer solution.
 #[allow(clippy::non_send_fields_in_send_ty)]
-unsafe impl Send for Device<'_> {}
+unsafe impl Send for Device {}
 
-unsafe impl Sync for Device<'_> {}
+unsafe impl Sync for Device {}
 
-impl Device<'_> {
+impl Device {
     pub fn create(pdevice: &Arc<PhysicalDevice>) -> Result<Arc<Self>> {
         let supported_extensions: HashSet<String> = unsafe {
             let extension_properties = pdevice
@@ -636,7 +636,7 @@ impl Device<'_> {
     }
 }
 
-impl Drop for Device<'_> {
+impl Drop for Device {
     fn drop(&mut self) {
         unsafe {
             log::trace!("device_wait_idle");

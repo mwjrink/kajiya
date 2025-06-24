@@ -13,10 +13,7 @@ use super::{
 
 use kajiya_backend::{
     BackendError,
-    ash::{
-        extensions::khr::Swapchain,
-        vk::{self, DebugUtilsLabelEXT},
-    },
+    ash::vk::{self, DebugUtilsLabelEXT},
     dynamic_constants::DynamicConstants,
     pipeline_cache::{
         ComputePipelineHandle, PipelineCache, RasterPipelineHandle, RtPipelineHandle,
@@ -934,7 +931,7 @@ impl<'exec_params, 'constants> ExecutingRenderGraph<'exec_params, 'constants> {
         if let Some(debug_utils) = params.device.debug_utils() {
             unsafe {
                 let label: CString = CString::new(pass.name.as_str()).unwrap();
-                let label = DebugUtilsLabelEXT::builder().label_name(&label);
+                let label = DebugUtilsLabelEXT::default().label_name(&label);
                 debug_utils.cmd_begin_debug_utils_label(cb.raw, &label);
             }
         }
@@ -1073,7 +1070,7 @@ impl<'exec_params, 'constants> ExecutingRenderGraph<'exec_params, 'constants> {
                 //global_barrier(device, cb, &[resource.access_type], &[access.access_type]);
 
                 vk_sync::cmd::pipeline_barrier(
-                    device.raw.fp_v1_0(),
+                    &device.raw,
                     cb.raw,
                     None,
                     &[vk_sync::BufferBarrier {
@@ -1116,7 +1113,7 @@ fn global_barrier(
     next_accesses: &[vk_sync::AccessType],
 ) {
     vk_sync::cmd::pipeline_barrier(
-        device.raw.fp_v1_0(),
+        &device.raw,
         cb.raw,
         Some(vk_sync::GlobalBarrier {
             previous_accesses,

@@ -14,16 +14,18 @@ use kajiya_imgui::ImGuiBackend;
 use turbosloth::*;
 
 use winit::{
+    application::ApplicationHandler,
     event::{Event, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
-    platform::run_return::EventLoopExtRunReturn,
-    window::{Fullscreen, WindowBuilder},
+    monitor::VideoModeHandle,
+    platform::run_on_demand::EventLoopExtRunOnDemand,
+    window::{Fullscreen, Window, WindowAttributes},
 };
 
 pub struct FrameContext<'a> {
     pub dt_filtered: f32,
     pub render_extent: [u32; 2],
-    pub events: &'a [Event<'static, ()>],
+    pub events: &'a [Event<()>],
     pub world_renderer: &'a mut WorldRenderer,
     pub window: &'a winit::window::Window,
 
@@ -48,13 +50,12 @@ pub struct ImguiContext<'a> {
 
 #[cfg(feature = "dear-imgui")]
 impl<'a> ImguiContext<'a> {
-    pub fn frame(self, callback: impl FnOnce(&imgui::Ui<'_>)) {
-        let ui = self
-            .imgui_backend
-            .prepare_frame(self.window, self.imgui, self.dt_filtered);
-        callback(&ui);
+    pub fn frame(self, callback: impl FnOnce(&imgui::Context)) {
         self.imgui_backend
-            .finish_frame(ui, self.window, self.ui_renderer);
+            .prepare_frame(self.window, self.imgui, self.dt_filtered);
+        callback(&self.imgui);
+        self.imgui_backend
+            .finish_frame(self.imgui, self.window, self.ui_renderer);
     }
 }
 
@@ -158,49 +159,52 @@ impl SimpleMainLoopBuilder {
         self
     }
 
-    pub fn build(self, window_builder: WindowBuilder) -> anyhow::Result<SimpleMainLoop> {
+    pub fn build(self, window_builder: WindowAttributes) -> anyhow::Result<SimpleMainLoop> {
         SimpleMainLoop::build(self, window_builder)
     }
 }
 
 pub struct SimpleMainLoop {
-    pub window: winit::window::Window,
-    pub world_renderer: WorldRenderer,
-    ui_renderer: UiRenderer,
-
-    optional: MainLoopOptional,
-
+    app: SimpleApp,
     event_loop: EventLoop<()>,
-    render_backend: RenderBackend,
-    rg_renderer: kajiya::rg::renderer::Renderer,
-    render_extent: [u32; 2],
 }
 
-impl SimpleMainLoop {
-    pub fn builder() -> SimpleMainLoopBuilder {
-        SimpleMainLoopBuilder::new()
+struct SimpleApp {
+    // this is pain... not sure how else to do with without the options...
+    // ideally some uninint or something... it'd be nice if the compiler
+    // knew somehow/we could indicate when they are initialized.
+    // Could store all this in a nested struct?
+    window_attributes: Option<WindowAttributes>,
+    builder: Option<SimpleMainLoopBuilder>,
+    window: Option<Window>,
+
+    world_renderer: Option<WorldRenderer>,
+    ui_renderer: Option<UiRenderer>,
+
+    optional: Option<MainLoopOptional>,
+
+    render_backend: Option<RenderBackend>,
+    rg_renderer: Option<kajiya::rg::renderer::Renderer>,
+    render_extent: Option<[u32; 2]>,
+
+    frame_fn: Option<Box<dyn FnMut(FrameContext) -> WorldFrameDesc>>,
+}
+
+impl SimpleApp {
+    pub fn window_aspect_ratio(&self) -> f32 {
+        let window = self.window.as_ref().unwrap();
+        window.inner_size().width as f32 / window.inner_size().height as f32
     }
+}
 
-    fn build(
-        builder: SimpleMainLoopBuilder,
-        mut window_builder: WindowBuilder,
-    ) -> anyhow::Result<Self> {
-        kajiya::logging::set_up_logging(builder.default_log_level)?;
-        std::env::set_var("SMOL_THREADS", "64"); // HACK; TODO: get a real executor
+impl ApplicationHandler for SimpleApp {
+    fn resumed(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
+        let mut attributes = self.window_attributes.take().unwrap();
+        let builder = self.builder.take().unwrap();
 
-        // Note: asking for the logical size means that if the OS is using DPI scaling,
-        // we'll get a physically larger window (with more pixels).
-        // The internal rendering resolution will still be what was asked of the `builder`,
-        // and the last blit pass will perform spatial upsampling.
-        window_builder = window_builder.with_inner_size(winit::dpi::LogicalSize::new(
-            builder.resolution[0] as f64,
-            builder.resolution[1] as f64,
-        ));
-
-        let event_loop = EventLoop::new();
-
+        // TODO this needs to be done in an actively running event loop
         if let Some(fullscreen) = builder.fullscreen {
-            window_builder = window_builder.with_fullscreen(match fullscreen {
+            attributes = attributes.with_fullscreen(match fullscreen {
                 FullscreenMode::Borderless => Some(Fullscreen::Borderless(None)),
                 FullscreenMode::Exclusive => Some(Fullscreen::Exclusive(
                     event_loop
@@ -213,10 +217,24 @@ impl SimpleMainLoop {
             });
         }
 
-        let window = window_builder.build(&event_loop).expect("window");
+        let window = event_loop.create_window(attributes).unwrap();
 
         // Physical window extent in pixels
         let swapchain_extent = [window.inner_size().width, window.inner_size().height];
+
+        let render_backend = RenderBackend::new(
+            &window,
+            RenderBackendConfig {
+                swapchain_extent,
+                vsync: builder.vsync,
+                graphics_debugging: builder.graphics_debugging,
+                device_index: builder.physical_device_index,
+            },
+        )
+        .unwrap();
+
+        // TODO don't use create_window, create the window on the active event loop once it's running
+        // let window = event_loop.create_window(window_builder).expect("window");
 
         // Find the internal rendering resolution
         let render_extent = [
@@ -240,23 +258,15 @@ impl SimpleMainLoop {
             );
         }
 
-        let render_backend = RenderBackend::new(
-            &window,
-            RenderBackendConfig {
-                swapchain_extent,
-                vsync: builder.vsync,
-                graphics_debugging: builder.graphics_debugging,
-                device_index: builder.physical_device_index,
-            },
-        )?;
-
         let lazy_cache = LazyCache::create();
+
         let world_renderer = WorldRenderer::new(
             render_extent,
             temporal_upscale_extent,
             &render_backend,
             &lazy_cache,
-        )?;
+        )
+        .unwrap();
         let ui_renderer = UiRenderer::default();
 
         let rg_renderer = kajiya::rg::renderer::Renderer::new(&render_backend)?;
@@ -289,37 +299,37 @@ impl SimpleMainLoop {
             _puffin_server: puffin_server,
         };
 
-        Ok(Self {
-            window,
-            world_renderer,
-            ui_renderer,
-            optional,
-            event_loop,
-            render_backend,
-            rg_renderer,
-            render_extent,
-        })
+        self.window = Some(window);
     }
 
-    pub fn window_aspect_ratio(&self) -> f32 {
-        self.window.inner_size().width as f32 / self.window.inner_size().height as f32
+    fn new_events(
+        &mut self,
+        event_loop: &winit::event_loop::ActiveEventLoop,
+        cause: winit::event::StartCause,
+    ) {
     }
 
-    pub fn run<'a, FrameFn>(self, mut frame_fn: FrameFn) -> anyhow::Result<()>
-    where
-        FrameFn: (FnMut(FrameContext) -> WorldFrameDesc) + 'a,
-    {
-        #[allow(unused_variables, unused_mut)]
-        let SimpleMainLoop {
-            window,
-            mut world_renderer,
-            mut ui_renderer,
-            mut optional,
-            mut event_loop,
-            mut render_backend,
-            mut rg_renderer,
-            render_extent,
-        } = self;
+    fn window_event(
+        &mut self,
+        event_loop: &winit::event_loop::ActiveEventLoop,
+        window_id: winit::window::WindowId,
+        event: WindowEvent,
+    ) {
+        let mut window_attributes = self.window_attributes.as_mut().unwrap();
+        let mut builder = self.builder.as_mut().unwrap();
+        let mut window = self.window.as_mut().unwrap();
+        let mut world_renderer = self.world_renderer.as_mut().unwrap();
+        let mut ui_renderer = self.ui_renderer.as_mut().unwrap();
+        let mut optional = self.optional.as_mut().unwrap();
+        let mut render_backend = self.render_backend.as_mut().unwrap();
+        let mut rg_renderer = self.rg_renderer.as_mut().unwrap();
+        let mut render_extent = self.render_extent.as_mut().unwrap();
+        let mut frame_fn = self.frame_fn.as_mut().unwrap();
+
+        let generic_event = winit::event::Event::WindowEvent {
+            window_id: window.id(),
+            event: event,
+        };
 
         let mut events = Vec::new();
 
@@ -336,169 +346,219 @@ impl SimpleMainLoop {
         // and pipelines are be compiled, so it will most likely have a spike.
         let mut fake_dt_countdown: i32 = 1;
 
-        let mut running = true;
-        while running {
-            gpu_profiler::profiler().begin_frame();
-            let gpu_frame_start_ns = puffin::now_ns();
+        puffin::profile_scope!("event handler");
 
-            puffin::profile_scope!("main loop");
-            puffin::GlobalProfiler::lock().new_frame();
+        gpu_profiler::profiler().begin_frame();
+        let gpu_frame_start_ns = puffin::now_ns();
 
-            event_loop.run_return(|event, _, control_flow| {
-                puffin::profile_scope!("event handler");
+        puffin::profile_scope!("main loop");
+        puffin::GlobalProfiler::lock().new_frame();
 
-                let _ = &render_backend;
-                #[cfg(feature = "dear-imgui")]
-                optional
-                    .imgui_backend
-                    .handle_event(&window, &mut optional.imgui, &event);
+        let _ = &render_backend;
+        #[cfg(feature = "dear-imgui")]
+        optional
+            .imgui_backend
+            .handle_event(&window, &mut optional.imgui, &generic_event);
 
-                #[cfg(feature = "dear-imgui")]
-                let ui_wants_mouse = optional.imgui.io().want_capture_mouse;
+        #[cfg(feature = "dear-imgui")]
+        let ui_wants_mouse = optional.imgui.io().want_capture_mouse;
 
-                #[cfg(not(feature = "dear-imgui"))]
-                let ui_wants_mouse = false;
+        #[cfg(not(feature = "dear-imgui"))]
+        let ui_wants_mouse = false;
 
-                *control_flow = ControlFlow::Poll;
+        event_loop.set_control_flow(ControlFlow::Poll);
 
-                let mut allow_event = true;
-                match &event {
-                    Event::WindowEvent { event, .. } => match event {
-                        WindowEvent::CloseRequested => {
-                            *control_flow = ControlFlow::Exit;
-                            running = false;
-                        }
-                        WindowEvent::CursorMoved { .. } | WindowEvent::MouseInput { .. }
-                            if ui_wants_mouse =>
-                        {
-                            allow_event = false;
-                        }
-                        _ => {}
-                    },
-                    Event::MainEventsCleared => {
-                        *control_flow = ControlFlow::Exit;
-                    }
-                    _ => (),
+        let mut allow_event = true;
+        match &generic_event {
+            Event::WindowEvent { window_id, event } => match &event {
+                WindowEvent::CloseRequested => {
+                    event_loop.exit();
+                }
+                WindowEvent::CursorMoved { .. } | WindowEvent::MouseInput { .. }
+                    if ui_wants_mouse =>
+                {
+                    allow_event = false;
+                }
+                _ => (),
+            },
+            _ => {}
+        }
+
+        if allow_event {
+            events.push(generic_event);
+        }
+
+        puffin::profile_scope!("MainEventsCleared");
+
+        // Filter the frame time before passing it to the application and renderer.
+        // Fluctuations in frame rendering times cause stutter in animations,
+        // and time-dependent effects (such as motion blur).
+        //
+        // Should applications need unfiltered delta time, they can calculate
+        // it themselves, but it's good to pass the filtered time so users
+        // don't need to worry about it.
+        let dt_filtered = {
+            let now = std::time::Instant::now();
+            let dt_duration = now - last_frame_instant;
+            last_frame_instant = now;
+
+            let dt_raw = dt_duration.as_secs_f32();
+
+            // >= because rendering (and thus the spike) happens _after_ this.
+            if fake_dt_countdown >= 0 {
+                // First frame. Return the fake value.
+                fake_dt_countdown -= 1;
+                dt_raw.min(1.0 / 60.0)
+            } else {
+                // Not the first frame. Start averaging.
+
+                if dt_queue.len() >= DT_FILTER_WIDTH {
+                    dt_queue.pop_front();
                 }
 
-                if allow_event {
-                    events.extend(event.to_static());
-                }
-            });
+                dt_queue.push_back(dt_raw);
+                dt_queue.iter().copied().sum::<f32>() / dt_queue.len() as f32
+            }
+        };
 
-            puffin::profile_scope!("MainEventsCleared");
+        let frame_desc = frame_fn(FrameContext {
+            dt_filtered,
+            render_extent: *render_extent,
+            events: &events,
+            world_renderer: &mut world_renderer,
+            window: &window,
 
-            // Filter the frame time before passing it to the application and renderer.
-            // Fluctuations in frame rendering times cause stutter in animations,
-            // and time-dependent effects (such as motion blur).
-            //
-            // Should applications need unfiltered delta time, they can calculate
-            // it themselves, but it's good to pass the filtered time so users
-            // don't need to worry about it.
-            let dt_filtered = {
-                let now = std::time::Instant::now();
-                let dt_duration = now - last_frame_instant;
-                last_frame_instant = now;
-
-                let dt_raw = dt_duration.as_secs_f32();
-
-                // >= because rendering (and thus the spike) happens _after_ this.
-                if fake_dt_countdown >= 0 {
-                    // First frame. Return the fake value.
-                    fake_dt_countdown -= 1;
-                    dt_raw.min(1.0 / 60.0)
-                } else {
-                    // Not the first frame. Start averaging.
-
-                    if dt_queue.len() >= DT_FILTER_WIDTH {
-                        dt_queue.pop_front();
-                    }
-
-                    dt_queue.push_back(dt_raw);
-                    dt_queue.iter().copied().sum::<f32>() / dt_queue.len() as f32
-                }
-            };
-
-            let frame_desc = frame_fn(FrameContext {
+            #[cfg(feature = "dear-imgui")]
+            imgui: Some(ImguiContext {
+                imgui: &mut optional.imgui,
+                imgui_backend: &mut optional.imgui_backend,
+                ui_renderer: &mut ui_renderer,
                 dt_filtered,
-                render_extent,
-                events: &events,
-                world_renderer: &mut world_renderer,
                 window: &window,
+            }),
+        });
 
-                #[cfg(feature = "dear-imgui")]
-                imgui: Some(ImguiContext {
-                    imgui: &mut optional.imgui,
-                    imgui_backend: &mut optional.imgui_backend,
-                    ui_renderer: &mut ui_renderer,
-                    dt_filtered,
-                    window: &window,
-                }),
-            });
+        events.clear();
 
-            events.clear();
+        // Physical window extent in pixels
+        let swapchain_extent = [window.inner_size().width, window.inner_size().height];
 
-            // Physical window extent in pixels
-            let swapchain_extent = [window.inner_size().width, window.inner_size().height];
+        let prepared_frame = {
+            puffin::profile_scope!("prepare_frame");
+            rg_renderer.prepare_frame(|rg| {
+                rg.debug_hook = world_renderer.rg_debug_hook.take();
+                let main_img = world_renderer.prepare_render_graph(rg, &frame_desc);
+                let ui_img = ui_renderer.prepare_render_graph(rg);
 
-            let prepared_frame = {
-                puffin::profile_scope!("prepare_frame");
-                rg_renderer.prepare_frame(|rg| {
-                    rg.debug_hook = world_renderer.rg_debug_hook.take();
-                    let main_img = world_renderer.prepare_render_graph(rg, &frame_desc);
-                    let ui_img = ui_renderer.prepare_render_graph(rg);
+                let mut swap_chain = rg.get_swap_chain();
+                rg::SimpleRenderPass::new_compute(
+                    rg.add_pass("final blit"),
+                    "/shaders/final_blit.hlsl",
+                )
+                .read(&main_img)
+                .read(&ui_img)
+                .write(&mut swap_chain)
+                .constants((
+                    main_img.desc().extent_inv_extent_2d(),
+                    [
+                        swapchain_extent[0] as f32,
+                        swapchain_extent[1] as f32,
+                        1.0 / swapchain_extent[0] as f32,
+                        1.0 / swapchain_extent[1] as f32,
+                    ],
+                ))
+                .dispatch([swapchain_extent[0], swapchain_extent[1], 1]);
+            })
+        };
 
-                    let mut swap_chain = rg.get_swap_chain();
-                    rg::SimpleRenderPass::new_compute(
-                        rg.add_pass("final blit"),
-                        "/shaders/final_blit.hlsl",
-                    )
-                    .read(&main_img)
-                    .read(&ui_img)
-                    .write(&mut swap_chain)
-                    .constants((
-                        main_img.desc().extent_inv_extent_2d(),
-                        [
-                            swapchain_extent[0] as f32,
-                            swapchain_extent[1] as f32,
-                            1.0 / swapchain_extent[0] as f32,
-                            1.0 / swapchain_extent[1] as f32,
-                        ],
-                    ))
-                    .dispatch([swapchain_extent[0], swapchain_extent[1], 1]);
-                })
-            };
-
-            match prepared_frame {
-                Ok(()) => {
-                    puffin::profile_scope!("draw_frame");
-                    rg_renderer.draw_frame(
-                        |dynamic_constants| {
-                            world_renderer.prepare_frame_constants(
-                                dynamic_constants,
-                                &frame_desc,
-                                dt_filtered,
-                            )
-                        },
-                        &mut render_backend.swapchain,
-                    );
-                    world_renderer.retire_frame();
-                    last_error_text = None;
-                }
-                Err(e) => {
-                    let error_text = Some(format!("{:?}", e));
-                    if error_text != last_error_text {
-                        println!("{}", error_text.as_ref().unwrap());
-                        last_error_text = error_text;
-                    }
+        match prepared_frame {
+            Ok(()) => {
+                puffin::profile_scope!("draw_frame");
+                rg_renderer.draw_frame(
+                    |dynamic_constants| {
+                        world_renderer.prepare_frame_constants(
+                            dynamic_constants,
+                            &frame_desc,
+                            dt_filtered,
+                        )
+                    },
+                    &mut render_backend.swapchain,
+                );
+                world_renderer.retire_frame();
+                last_error_text = None;
+            }
+            Err(e) => {
+                let error_text = Some(format!("{:?}", e));
+                if error_text != last_error_text {
+                    println!("{}", error_text.as_ref().unwrap());
+                    last_error_text = error_text;
                 }
             }
-
-            gpu_profiler::profiler().end_frame();
-            if let Some(report) = gpu_profiler::profiler().last_report() {
-                report.send_to_puffin(gpu_frame_start_ns);
-            };
         }
+
+        gpu_profiler::profiler().end_frame();
+        if let Some(report) = gpu_profiler::profiler().last_report() {
+            report.send_to_puffin(gpu_frame_start_ns);
+        };
+    }
+}
+
+impl SimpleMainLoop {
+    pub fn builder() -> SimpleMainLoopBuilder {
+        SimpleMainLoopBuilder::new()
+    }
+
+    fn build(
+        builder: SimpleMainLoopBuilder,
+        mut window_builder: WindowAttributes,
+    ) -> anyhow::Result<Self> {
+        kajiya::logging::set_up_logging(builder.default_log_level)?;
+        std::env::set_var("SMOL_THREADS", "64"); // HACK; TODO: get a real executor
+
+        // Note: asking for the logical size means that if the OS is using DPI scaling,
+        // we'll get a physically larger window (with more pixels).
+        // The internal rendering resolution will still be what was asked of the `builder`,
+        // and the last blit pass will perform spatial upsampling.
+        window_builder = window_builder.with_inner_size(winit::dpi::LogicalSize::new(
+            builder.resolution[0] as f64,
+            builder.resolution[1] as f64,
+        ));
+
+        let event_loop = EventLoop::new().unwrap();
+        let app = SimpleApp {
+            window_attributes: Some(window_builder),
+            builder: Some(builder),
+            window: None,
+            world_renderer: None,
+            ui_renderer: None,
+            optional: None,
+            render_backend: None,
+            rg_renderer: None,
+            render_extent: None,
+            frame_fn: None,
+        };
+
+        Ok(Self {
+            app: app,
+            event_loop: event_loop,
+        })
+    }
+
+    pub fn run<FrameFn>(self, frame_fn: FrameFn) -> anyhow::Result<()>
+    where
+        FrameFn: (FnMut(FrameContext) -> WorldFrameDesc) + 'static,
+    {
+        let SimpleMainLoop {
+            mut app,
+            event_loop,
+        } = self;
+
+        // I have no idea why the compiler wants this fn to live statically.
+        // It seems obvious it only needs to live as long as this function.
+        let frame_fn = Box::new(frame_fn);
+        app.frame_fn = Some(frame_fn);
+
+        event_loop.run_app(&mut app);
 
         Ok(())
     }
