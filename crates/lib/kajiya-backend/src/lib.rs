@@ -1,3 +1,5 @@
+#![feature(unsafe_cell_access)]
+
 pub mod bytes;
 pub mod chunky_list;
 pub mod dynamic_constants;
@@ -16,4 +18,4 @@ pub use gpu_allocator;
 pub use gpu_profiler;
 pub use rspirv_reflect;
 pub use vk_sync;
-pub use vulkan::{device::Device, image::*, shader::MAX_DESCRIPTOR_SETS, RenderBackend};
+pub use vulkan::{RenderBackend, device::Device, image::*, shader::MAX_DESCRIPTOR_SETS};

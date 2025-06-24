@@ -1,7 +1,7 @@
 [package]
 name = "kajiya-asset"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -9,15 +9,31 @@ edition = "2021"
 kajiya-backend = { path = "../kajiya-backend" }
 
 anyhow = "1.0"
-base64 = "0.12"
+base64 = "0.22"
 byteorder = "1.4"
 bytes = "1.0"
-ddsfile = "0.4"
-glam = "0.22"
-gltf = { git = "https://github.com/gltf-rs/gltf.git", rev = "b9c04be69363b8353d58f99aa1008ead93020851", features = ["KHR_texture_transform", "KHR_materials_pbrSpecularGlossiness"] } # no submodules
-image = { version = "0.23.13", default-features = false, features = ["gif", "jpeg", "ico", "png", "pnm", "tga", "tiff", "webp", "bmp", "hdr", "dxt"] }
-intel_tex_2 = "0.2.0"
+ddsfile = "0.5"
+glam = "0.30"
+gltf = { git = "https://github.com/gltf-rs/gltf.git", rev = "b9c04be69363b8353d58f99aa1008ead93020851", features = [
+    "KHR_texture_transform",
+    "KHR_materials_pbrSpecularGlossiness",
+] } # no submodules
+image = { version = "0.25.6", default-features = false, features = [
+    "gif",
+    "jpeg",
+    "ico",
+    "png",
+    "pnm",
+    "tga",
+    "tiff",
+    "webp",
+    "bmp",
+    "hdr",
+] }
+intel_tex_2 = "0.4.0"
 log = "0.4"
-mikktspace = { git = "https://github.com/h3r2tic/mikktspace.git", branch = "master", default-features = false, features = ["glam"] }
+mikktspace = { git = "https://github.com/h3r2tic/mikktspace.git", branch = "master", default-features = false, features = [
+    "glam",
+] }
 turbosloth = { git = "https://github.com/h3r2tic/turbosloth.git", rev = "92030af" }
 urlencoding = "2.1"

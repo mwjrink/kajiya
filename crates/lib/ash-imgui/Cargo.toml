@@ -2,11 +2,11 @@
 name = "ash-imgui"
 version = "0.1.0"
 authors = ["Simon Brown <si@sjbrown.co.uk>", "Tomasz Stachowiak <h3@h3.gd>"]
-edition = "2021"
+edition = "2024"
 publish = false
 
 [dependencies]
-ash = "0.33"
-imgui = "0.7"
-arrayvec = "0.5"
-memoffset = "0.6"
+ash = "0.38"
+imgui = "0.12"
+arrayvec = "0.7"
+memoffset = "0.9"

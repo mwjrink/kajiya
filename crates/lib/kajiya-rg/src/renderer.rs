@@ -4,14 +4,14 @@ use crate::{
     TemporalRenderGraphState, TemporalResourceState,
 };
 use kajiya_backend::{
+    Device,
     ash::vk,
     dynamic_constants::*,
     pipeline_cache::*,
     rspirv_reflect,
     transient_resource_cache::TransientResourceCache,
     vk_sync,
-    vulkan::{self, swapchain::Swapchain, RenderBackend},
-    Device,
+    vulkan::{self, RenderBackend, swapchain::Swapchain},
 };
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
@@ -144,7 +144,7 @@ impl Renderer {
                 raw_device
                     .begin_command_buffer(
                         cb.raw,
-                        &vk::CommandBufferBeginInfo::builder()
+                        &vk::CommandBufferBeginInfo::default()
                             .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT),
                     )
                     .unwrap();
@@ -191,9 +191,9 @@ impl Renderer {
 
                 raw_device.end_command_buffer(main_cb.raw).unwrap();
 
-                let submit_info = [vk::SubmitInfo::builder()
-                    .command_buffers(std::slice::from_ref(&main_cb.raw))
-                    .build()];
+                let submit_info = [
+                    vk::SubmitInfo::default().command_buffers(std::slice::from_ref(&main_cb.raw))
+                ];
 
                 raw_device
                     .reset_fences(std::slice::from_ref(&main_cb.submit_done_fence))
@@ -263,14 +263,13 @@ impl Renderer {
             unsafe {
                 raw_device.end_command_buffer(presentation_cb.raw).unwrap();
 
-                let submit_info = [vk::SubmitInfo::builder()
+                let submit_info = [vk::SubmitInfo::default()
                     .wait_semaphores(std::slice::from_ref(&swapchain_image.acquire_semaphore))
                     .signal_semaphores(std::slice::from_ref(
                         &swapchain_image.rendering_finished_semaphore,
                     ))
                     .wait_dst_stage_mask(&[vk::PipelineStageFlags::COMPUTE_SHADER])
-                    .command_buffers(std::slice::from_ref(&presentation_cb.raw))
-                    .build()];
+                    .command_buffers(std::slice::from_ref(&presentation_cb.raw))];
                 raw_device
                     .reset_fences(std::slice::from_ref(&presentation_cb.submit_done_fence))
                     .expect("reset_fences");
@@ -293,7 +292,9 @@ impl Renderer {
 
         self.temporal_rg_state = match std::mem::take(&mut self.temporal_rg_state) {
             TemporalRg::Inert(_) => {
-                panic!("Trying to retire the render graph, but it's inert. Was prepare_frame not caled?");
+                panic!(
+                    "Trying to retire the render graph, but it's inert. Was prepare_frame not caled?"
+                );
             }
             TemporalRg::Exported(rg) => TemporalRg::Inert(rg.retire_temporal(&retired_rg)),
         };
@@ -318,39 +319,34 @@ impl Renderer {
         ];
 
         let mut binding_flags_create_info =
-            vk::DescriptorSetLayoutBindingFlagsCreateInfo::builder()
-                .binding_flags(&set_binding_flags)
-                .build();
+            vk::DescriptorSetLayoutBindingFlagsCreateInfo::default()
+                .binding_flags(&set_binding_flags);
 
         let descriptor_set_layout = unsafe {
             device
                 .create_descriptor_set_layout(
-                    &vk::DescriptorSetLayoutCreateInfo::builder()
+                    &vk::DescriptorSetLayoutCreateInfo::default()
                         .bindings(&[
                             // frame_constants
-                            vk::DescriptorSetLayoutBinding::builder()
+                            vk::DescriptorSetLayoutBinding::default()
                                 .descriptor_count(1)
                                 .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC)
                                 .stage_flags(vk::ShaderStageFlags::ALL)
-                                .binding(0)
-                                .build(),
+                                .binding(0),
                             // instance_dynamic_parameters
-                            vk::DescriptorSetLayoutBinding::builder()
+                            vk::DescriptorSetLayoutBinding::default()
                                 .descriptor_count(1)
                                 .descriptor_type(vk::DescriptorType::STORAGE_BUFFER_DYNAMIC)
                                 .stage_flags(vk::ShaderStageFlags::ALL)
-                                .binding(1)
-                                .build(),
+                                .binding(1),
                             // triangle_lights_dyn
-                            vk::DescriptorSetLayoutBinding::builder()
+                            vk::DescriptorSetLayoutBinding::default()
                                 .descriptor_count(1)
                                 .descriptor_type(vk::DescriptorType::STORAGE_BUFFER_DYNAMIC)
                                 .stage_flags(vk::ShaderStageFlags::ALL)
-                                .binding(2)
-                                .build(),
+                                .binding(2),
                         ])
-                        .push_next(&mut binding_flags_create_info)
-                        .build(),
+                        .push_next(&mut binding_flags_create_info),
                     None,
                 )
                 .unwrap()
@@ -367,7 +363,7 @@ impl Renderer {
             },
         ];
 
-        let descriptor_pool_info = vk::DescriptorPoolCreateInfo::builder()
+        let descriptor_pool_info = vk::DescriptorPoolCreateInfo::default()
             .pool_sizes(&descriptor_sizes)
             .max_sets(1);
 
@@ -380,46 +376,40 @@ impl Renderer {
         let set = unsafe {
             device
                 .allocate_descriptor_sets(
-                    &vk::DescriptorSetAllocateInfo::builder()
+                    &vk::DescriptorSetAllocateInfo::default()
                         .descriptor_pool(descriptor_pool)
-                        .set_layouts(std::slice::from_ref(&descriptor_set_layout))
-                        .build(),
+                        .set_layouts(std::slice::from_ref(&descriptor_set_layout)),
                 )
                 .unwrap()[0]
         };
 
         {
-            let uniform_buffer_info = vk::DescriptorBufferInfo::builder()
+            let uniform_buffer_info = vk::DescriptorBufferInfo::default()
                 .buffer(dynamic_constants.raw)
-                .range(MAX_DYNAMIC_CONSTANTS_BYTES_PER_DISPATCH as u64)
-                .build();
-            let storage_buffer_info = vk::DescriptorBufferInfo::builder()
+                .range(MAX_DYNAMIC_CONSTANTS_BYTES_PER_DISPATCH as u64);
+            let storage_buffer_info = vk::DescriptorBufferInfo::default()
                 .buffer(dynamic_constants.raw)
-                .range(MAX_DYNAMIC_CONSTANTS_STORAGE_BUFFER_BYTES as u64)
-                .build();
+                .range(MAX_DYNAMIC_CONSTANTS_STORAGE_BUFFER_BYTES as u64);
 
             let descriptor_set_writes = [
                 // `frame_constants`
-                vk::WriteDescriptorSet::builder()
+                vk::WriteDescriptorSet::default()
                     .dst_binding(0)
                     .dst_set(set)
                     .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC)
-                    .buffer_info(std::slice::from_ref(&uniform_buffer_info))
-                    .build(),
+                    .buffer_info(std::slice::from_ref(&uniform_buffer_info)),
                 // `instance_dynamic_parameters_dyn`
-                vk::WriteDescriptorSet::builder()
+                vk::WriteDescriptorSet::default()
                     .dst_binding(1)
                     .dst_set(set)
                     .descriptor_type(vk::DescriptorType::STORAGE_BUFFER_DYNAMIC)
-                    .buffer_info(std::slice::from_ref(&storage_buffer_info))
-                    .build(),
+                    .buffer_info(std::slice::from_ref(&storage_buffer_info)),
                 // `triangle_lights_dyn`
-                vk::WriteDescriptorSet::builder()
+                vk::WriteDescriptorSet::default()
                     .dst_binding(2)
                     .dst_set(set)
                     .descriptor_type(vk::DescriptorType::STORAGE_BUFFER_DYNAMIC)
-                    .buffer_info(std::slice::from_ref(&storage_buffer_info))
-                    .build(),
+                    .buffer_info(std::slice::from_ref(&storage_buffer_info)),
             ];
 
             unsafe { device.update_descriptor_sets(&descriptor_set_writes, &[]) };

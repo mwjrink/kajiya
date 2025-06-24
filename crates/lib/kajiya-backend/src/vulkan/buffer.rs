@@ -2,19 +2,22 @@ use crate::BackendError;
 
 use super::device::Device;
 use ash::vk;
-use gpu_allocator::{AllocationCreateDesc, MemoryLocation};
+use gpu_allocator::{
+    MemoryLocation,
+    vulkan::{AllocationCreateDesc, AllocationScheme},
+};
 
 pub struct Buffer {
     pub raw: vk::Buffer,
     pub desc: BufferDesc,
-    pub allocation: gpu_allocator::SubAllocation,
+    pub allocation: gpu_allocator::vulkan::Allocation,
 }
 
 impl Buffer {
     pub fn device_address(&self, device: &Device) -> u64 {
         unsafe {
             device.raw.get_buffer_device_address(
-                &ash::vk::BufferDeviceAddressInfo::builder().buffer(self.raw),
+                &ash::vk::BufferDeviceAddressInfo::default().buffer(self.raw),
             )
         }
     }
@@ -62,10 +65,10 @@ impl BufferDesc {
     }
 }
 
-impl Device {
+impl Device<'_> {
     pub(crate) fn create_buffer_impl(
         raw: &ash::Device,
-        allocator: &mut gpu_allocator::VulkanAllocator,
+        allocator: &mut gpu_allocator::vulkan::Allocator,
         desc: BufferDesc,
         name: &str,
     ) -> Result<Buffer, BackendError> {
@@ -100,7 +103,8 @@ impl Device {
                 name,
                 requirements,
                 location: desc.memory_location,
-                linear: true, // Buffers are always linear
+                linear: true,
+                allocation_scheme: AllocationScheme::GpuAllocatorManaged,
             })
             .map_err(move |err| BackendError::Allocation {
                 inner: err,
@@ -153,11 +157,10 @@ impl Device {
                     cb,
                     scratch_buffer.raw,
                     buffer.raw,
-                    &[ash::vk::BufferCopy::builder()
+                    &[ash::vk::BufferCopy::default()
                         .dst_offset(0)
                         .src_offset(0)
-                        .size(desc.size as u64)
-                        .build()],
+                        .size(desc.size as u64)],
                 );
             })?;
         }

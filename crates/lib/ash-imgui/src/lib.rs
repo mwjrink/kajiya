@@ -2,8 +2,8 @@
 #![allow(clippy::unneeded_field_pattern, clippy::cast_ptr_alignment)]
 
 use arrayvec::ArrayVec;
-use ash::{vk, Device};
-use imgui::{internal::RawWrapper, Context, DrawCmd, DrawCmdParams, DrawData, DrawIdx, DrawVert};
+use ash::{Device, vk};
+use imgui::{Context, DrawCmd, DrawCmdParams, DrawData, DrawIdx, DrawVert, internal::RawWrapper};
 use memoffset::offset_of;
 use std::{
     ffi::CStr,
@@ -90,13 +90,13 @@ impl Renderer {
         };
 
         let descriptor_set_layout = {
-            let binding = vk::DescriptorSetLayoutBinding::builder()
+            let binding = vk::DescriptorSetLayoutBinding::default()
                 .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
                 .descriptor_count(1)
                 .stage_flags(vk::ShaderStageFlags::FRAGMENT)
                 .immutable_samplers(slice::from_ref(&sampler));
             let descriptor_set_layout_create_info =
-                vk::DescriptorSetLayoutCreateInfo::builder().bindings(slice::from_ref(&binding));
+                vk::DescriptorSetLayoutCreateInfo::default().bindings(slice::from_ref(&binding));
             unsafe { device.create_descriptor_set_layout(&descriptor_set_layout_create_info, None) }
                 .unwrap()
         };
@@ -107,7 +107,7 @@ impl Renderer {
                 offset: 0,
                 size: Renderer::PUSH_CONSTANT_SIZE as u32,
             };
-            let pipeline_layout_create_info = vk::PipelineLayoutCreateInfo::builder()
+            let pipeline_layout_create_info = vk::PipelineLayoutCreateInfo::default()
                 .set_layouts(slice::from_ref(&descriptor_set_layout))
                 .push_constant_ranges(slice::from_ref(&push_constant_range));
             unsafe { device.create_pipeline_layout(&pipeline_layout_create_info, None) }.unwrap()
@@ -123,8 +123,8 @@ impl Renderer {
                 usage: vk::BufferUsageFlags::VERTEX_BUFFER,
                 ..Default::default()
             };
-            let mut buffers = ArrayVec::<[vk::Buffer; Renderer::FRAME_COUNT]>::new();
-            let mut mem_offsets = ArrayVec::<[usize; Renderer::FRAME_COUNT]>::new();
+            let mut buffers = ArrayVec::<vk::Buffer, { Renderer::FRAME_COUNT }>::new();
+            let mut mem_offsets = ArrayVec::<usize, { Renderer::FRAME_COUNT }>::new();
             for _i in 0..Renderer::FRAME_COUNT {
                 let buffer = unsafe { device.create_buffer(&buffer_create_info, None) }.unwrap();
                 let mem_req = unsafe { device.get_buffer_memory_requirements(buffer) };
@@ -148,8 +148,8 @@ impl Renderer {
                 usage: vk::BufferUsageFlags::INDEX_BUFFER,
                 ..Default::default()
             };
-            let mut buffers = ArrayVec::<[vk::Buffer; Renderer::FRAME_COUNT]>::new();
-            let mut mem_offsets = ArrayVec::<[usize; Renderer::FRAME_COUNT]>::new();
+            let mut buffers = ArrayVec::<vk::Buffer, { Renderer::FRAME_COUNT }>::new();
+            let mut mem_offsets = ArrayVec::<usize, { Renderer::FRAME_COUNT }>::new();
             for _i in 0..Renderer::FRAME_COUNT {
                 let buffer = unsafe { device.create_buffer(&buffer_create_info, None) }.unwrap();
                 let mem_req = unsafe { device.get_buffer_memory_requirements(buffer) };
@@ -166,7 +166,7 @@ impl Renderer {
             )
         };
 
-        let mut fonts = imgui.fonts();
+        let fonts = imgui.fonts();
         let texture = fonts.build_alpha8_texture();
 
         let (image_buffer, image_mem_offset) = {
@@ -258,14 +258,14 @@ impl Renderer {
                 ty: vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
                 descriptor_count: 1,
             }];
-            let descriptor_pool_create_info = vk::DescriptorPoolCreateInfo::builder()
+            let descriptor_pool_create_info = vk::DescriptorPoolCreateInfo::default()
                 .max_sets(1)
                 .pool_sizes(&descriptor_pool_sizes);
             unsafe { device.create_descriptor_pool(&descriptor_pool_create_info, None) }.unwrap()
         };
 
         let descriptor_set = {
-            let descriptor_set_allocate_info = vk::DescriptorSetAllocateInfo::builder()
+            let descriptor_set_allocate_info = vk::DescriptorSetAllocateInfo::default()
                 .descriptor_pool(descriptor_pool)
                 .set_layouts(slice::from_ref(&descriptor_set_layout));
             unsafe { device.allocate_descriptor_sets(&descriptor_set_allocate_info) }.unwrap()[0]
@@ -299,7 +299,7 @@ impl Renderer {
                 image_view,
                 image_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
             };
-            let write_descriptor_set = vk::WriteDescriptorSet::builder()
+            let write_descriptor_set = vk::WriteDescriptorSet::default()
                 .dst_set(descriptor_set)
                 .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
                 .image_info(slice::from_ref(&image_info));
@@ -487,7 +487,7 @@ impl Renderer {
                 },
             ];
 
-            let vertex_input_state_create_info = vk::PipelineVertexInputStateCreateInfo::builder()
+            let vertex_input_state_create_info = vk::PipelineVertexInputStateCreateInfo::default()
                 .vertex_binding_descriptions(slice::from_ref(&vertex_input_binding))
                 .vertex_attribute_descriptions(&vertex_input_attributes);
 
@@ -522,16 +522,16 @@ impl Renderer {
                 src_alpha_blend_factor: vk::BlendFactor::ONE,
                 dst_alpha_blend_factor: vk::BlendFactor::ONE_MINUS_SRC_ALPHA,
                 alpha_blend_op: vk::BlendOp::ADD,
-                color_write_mask: vk::ColorComponentFlags::all(),
+                color_write_mask: vk::ColorComponentFlags::RGBA,
             };
-            let color_blend_state_create_info = vk::PipelineColorBlendStateCreateInfo::builder()
+            let color_blend_state_create_info = vk::PipelineColorBlendStateCreateInfo::default()
                 .attachments(slice::from_ref(&color_blend_attachment_state));
 
             let dynamic_states = [vk::DynamicState::VIEWPORT, vk::DynamicState::SCISSOR];
             let pipeline_dynamic_state_create_info =
-                vk::PipelineDynamicStateCreateInfo::builder().dynamic_states(&dynamic_states);
+                vk::PipelineDynamicStateCreateInfo::default().dynamic_states(&dynamic_states);
 
-            let pipeline_create_info = vk::GraphicsPipelineCreateInfo::builder()
+            let pipeline_create_info = vk::GraphicsPipelineCreateInfo::default()
                 .stages(&shader_stage_create_info)
                 .vertex_input_state(&vertex_input_state_create_info)
                 .input_assembly_state(&input_assembly_state_create_info)

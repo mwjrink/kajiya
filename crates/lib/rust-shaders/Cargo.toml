@@ -1,7 +1,7 @@
 [package]
 name = "rust-shaders"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 
 [lib]
 crate-type = ["lib", "dylib"]
@@ -11,5 +11,5 @@ doctest = false
 [dependencies]
 rust-shaders-shared = { path = "../rust-shaders-shared" }
 spirv-std = { git = "https://github.com/EmbarkStudios/rust-gpu", rev = "e87c324bfda6bea144fe2635586281c4ef144f0d" }
-macaw = { version = "0.18", default-features = false, features = ["libm"] }
-glam = { version = "0.22", default-features = false, features = ["libm"] }
+macaw = { version = "0.30", default-features = false, features = ["libm"] }
+glam = { version = "0.30", default-features = false, features = ["libm"] }

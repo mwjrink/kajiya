@@ -12,7 +12,7 @@ use bytes::Bytes;
 use derive_builder::Builder;
 use parking_lot::Mutex;
 use std::{
-    collections::{hash_map::Entry, HashMap},
+    collections::{HashMap, hash_map::Entry},
     ffi::CString,
     path::PathBuf,
     sync::Arc,
@@ -141,7 +141,7 @@ pub fn create_descriptor_set_layouts(
                     | rspirv_reflect::DescriptorType::STORAGE_IMAGE
                     | rspirv_reflect::DescriptorType::STORAGE_BUFFER
                     | rspirv_reflect::DescriptorType::STORAGE_BUFFER_DYNAMIC => bindings.push(
-                        vk::DescriptorSetLayoutBinding::builder()
+                        vk::DescriptorSetLayoutBinding::default()
                             .binding(*binding_index)
                             //.descriptor_count(binding.count)
                             .descriptor_count(1) // TODO
@@ -167,8 +167,7 @@ pub fn create_descriptor_set_layouts(
                                 }
                                 _ => unimplemented!("{:?}", binding),
                             })
-                            .stage_flags(stage_flags)
-                            .build(),
+                            .stage_flags(stage_flags),
                     ),
                     rspirv_reflect::DescriptorType::SAMPLED_IMAGE => {
                         if matches!(
@@ -196,12 +195,11 @@ pub fn create_descriptor_set_layouts(
                         };
 
                         bindings.push(
-                            vk::DescriptorSetLayoutBinding::builder()
+                            vk::DescriptorSetLayoutBinding::default()
                                 .binding(*binding_index)
                                 .descriptor_count(descriptor_count) // TODO
                                 .descriptor_type(vk::DescriptorType::SAMPLED_IMAGE)
-                                .stage_flags(stage_flags)
-                                .build(),
+                                .stage_flags(stage_flags),
                         );
                     }
                     rspirv_reflect::DescriptorType::SAMPLER => {
@@ -230,7 +228,7 @@ pub fn create_descriptor_set_layouts(
                             };
 
                             bindings.push(
-                                vk::DescriptorSetLayoutBinding::builder()
+                                vk::DescriptorSetLayoutBinding::default()
                                     .descriptor_count(1)
                                     .descriptor_type(vk::DescriptorType::SAMPLER)
                                     .stage_flags(stage_flags)
@@ -241,20 +239,18 @@ pub fn create_descriptor_set_layouts(
                                             mipmap_mode,
                                             address_modes,
                                         }),
-                                    )))
-                                    .build(),
+                                    ))),
                             );
                         } else {
                             panic!("{}", binding.name);
                         }
                     }
                     rspirv_reflect::DescriptorType::ACCELERATION_STRUCTURE_KHR => bindings.push(
-                        vk::DescriptorSetLayoutBinding::builder()
+                        vk::DescriptorSetLayoutBinding::default()
                             .binding(*binding_index)
                             .descriptor_count(1) // TODO
                             .descriptor_type(vk::DescriptorType::ACCELERATION_STRUCTURE_KHR)
-                            .stage_flags(stage_flags)
-                            .build(),
+                            .stage_flags(stage_flags),
                     ),
 
                     _ => unimplemented!("{:?}", binding),
@@ -262,18 +258,17 @@ pub fn create_descriptor_set_layouts(
             }
 
             let mut binding_flags_create_info =
-                vk::DescriptorSetLayoutBindingFlagsCreateInfo::builder()
+                vk::DescriptorSetLayoutBindingFlagsCreateInfo::default()
                     .binding_flags(&binding_flags);
 
             let set_layout = unsafe {
                 device
                     .raw
                     .create_descriptor_set_layout(
-                        &vk::DescriptorSetLayoutCreateInfo::builder()
+                        &vk::DescriptorSetLayoutCreateInfo::default()
                             .flags(set_opts.flags.unwrap_or_default() | set_layout_create_flags)
                             .bindings(&bindings)
-                            .push_next(&mut binding_flags_create_info)
-                            .build(),
+                            .push_next(&mut binding_flags_create_info),
                         None,
                     )
                     .unwrap()
@@ -291,7 +286,7 @@ pub fn create_descriptor_set_layouts(
                 device
                     .raw
                     .create_descriptor_set_layout(
-                        &vk::DescriptorSetLayoutCreateInfo::builder().build(),
+                        &vk::DescriptorSetLayoutCreateInfo::default(),
                         None,
                     )
                     .unwrap()
@@ -402,7 +397,7 @@ pub fn create_compute_pipeline(
     // dbg!(&set_layout_info);
 
     let mut layout_create_info =
-        vk::PipelineLayoutCreateInfo::builder().set_layouts(&descriptor_set_layouts);
+        vk::PipelineLayoutCreateInfo::default().set_layouts(&descriptor_set_layouts);
 
     let push_constant_ranges = vk::PushConstantRange {
         stage_flags: vk::ShaderStageFlags::COMPUTE,
@@ -419,13 +414,13 @@ pub fn create_compute_pipeline(
         let shader_module = device
             .raw
             .create_shader_module(
-                &vk::ShaderModuleCreateInfo::builder().code(spirv.as_slice_of::<u32>().unwrap()),
+                &vk::ShaderModuleCreateInfo::default().code(spirv.as_slice_of::<u32>().unwrap()),
                 None,
             )
             .unwrap();
 
         let entry_name = CString::new(desc.source.entry()).unwrap();
-        let stage_create_info = vk::PipelineShaderStageCreateInfo::builder()
+        let stage_create_info = vk::PipelineShaderStageCreateInfo::default()
             .module(shader_module)
             .stage(vk::ShaderStageFlags::COMPUTE)
             .name(&entry_name);
@@ -435,14 +430,14 @@ pub fn create_compute_pipeline(
             .create_pipeline_layout(&layout_create_info, None)
             .unwrap();
 
-        let pipeline_info = vk::ComputePipelineCreateInfo::builder()
-            .stage(stage_create_info.build())
+        let pipeline_info = vk::ComputePipelineCreateInfo::default()
+            .stage(stage_create_info)
             .layout(pipeline_layout);
 
         let pipeline = device
             .raw
             // TODO: pipeline cache
-            .create_compute_pipelines(vk::PipelineCache::null(), &[pipeline_info.build()], None)
+            .create_compute_pipelines(vk::PipelineCache::null(), &[pipeline_info], None)
             .expect("pipeline")[0];
 
         let mut descriptor_pool_sizes: Vec<vk::DescriptorPoolSize> = Vec::new();
@@ -600,7 +595,7 @@ pub const MAX_COLOR_ATTACHMENTS: usize = 8;
 pub struct FramebufferCacheKey {
     pub dims: [u32; 2],
     pub attachments:
-        ArrayVec<[(vk::ImageUsageFlags, vk::ImageCreateFlags); MAX_COLOR_ATTACHMENTS + 1]>,
+        ArrayVec<(vk::ImageUsageFlags, vk::ImageCreateFlags), { MAX_COLOR_ATTACHMENTS + 1 }>,
 }
 
 impl FramebufferCacheKey {
@@ -625,7 +620,7 @@ impl FramebufferCacheKey {
 // TODO: nuke when resizing
 pub struct FramebufferCache {
     entries: Mutex<HashMap<FramebufferCacheKey, vk::Framebuffer>>,
-    attachment_desc: ArrayVec<[RenderPassAttachmentDesc; MAX_COLOR_ATTACHMENTS + 1]>,
+    attachment_desc: ArrayVec<RenderPassAttachmentDesc, { MAX_COLOR_ATTACHMENTS + 1 }>,
     render_pass: vk::RenderPass,
     color_attachment_count: usize,
 }
@@ -673,21 +668,20 @@ impl FramebufferCache {
                     .iter()
                     .zip(key.attachments.iter())
                     .map(|(desc, (usage, flags))| {
-                        vk::FramebufferAttachmentImageInfoKHR::builder()
+                        vk::FramebufferAttachmentImageInfoKHR::default()
                             .width(width as _)
                             .height(height as _)
                             .flags(*flags)
                             .layer_count(1)
                             .view_formats(std::slice::from_ref(color_formats.add(desc.format)))
                             .usage(*usage)
-                            .build()
                     })
-                    .collect::<ArrayVec<[_; MAX_COLOR_ATTACHMENTS + 1]>>();
+                    .collect::<ArrayVec<_, { MAX_COLOR_ATTACHMENTS + 1 }>>();
 
-                let mut imageless_desc = vk::FramebufferAttachmentsCreateInfoKHR::builder()
+                let mut imageless_desc = vk::FramebufferAttachmentsCreateInfoKHR::default()
                     .attachment_image_infos(&attachments);
 
-                let mut fbo_desc = vk::FramebufferCreateInfo::builder()
+                let mut fbo_desc = vk::FramebufferCreateInfo::default()
                     .flags(vk::FramebufferCreateFlags::IMAGELESS_KHR)
                     .render_pass(self.render_pass)
                     .width(width as _)
@@ -760,17 +754,17 @@ pub fn create_render_pass(device: &Device, desc: RenderPassDesc<'_>) -> Arc<Rend
         ..Default::default()
     }];*/
 
-    let mut subpass_description = vk::SubpassDescription::builder()
+    let mut subpass_description = vk::SubpassDescription::default()
         .color_attachments(&color_attachment_refs)
         .pipeline_bind_point(vk::PipelineBindPoint::GRAPHICS);
 
     if desc.depth_attachment.is_some() {
         subpass_description = subpass_description.depth_stencil_attachment(&depth_attachment_ref);
     }
-    let subpass_description = subpass_description.build();
+    let subpass_description = subpass_description;
 
     let subpasses = [subpass_description];
-    let render_pass_create_info = vk::RenderPassCreateInfo::builder()
+    let render_pass_create_info = vk::RenderPassCreateInfo::default()
         .attachments(&renderpass_attachments)
         .subpasses(&subpasses);
 
@@ -844,7 +838,7 @@ pub fn create_raster_pipeline(
 
     unsafe {
         let mut layout_create_info =
-            vk::PipelineLayoutCreateInfo::builder().set_layouts(&descriptor_set_layouts);
+            vk::PipelineLayoutCreateInfo::default().set_layouts(&descriptor_set_layouts);
 
         let push_constant_ranges = vk::PushConstantRange {
             stage_flags: vk::ShaderStageFlags::ALL_GRAPHICS,
@@ -866,7 +860,7 @@ pub fn create_raster_pipeline(
         let shader_stage_create_infos: Vec<_> = shaders
             .iter()
             .map(|desc| {
-                let shader_info = vk::ShaderModuleCreateInfo::builder()
+                let shader_info = vk::ShaderModuleCreateInfo::default()
                     .code(desc.code.as_slice_of::<u32>().unwrap());
 
                 let shader_module = device
@@ -880,11 +874,10 @@ pub fn create_raster_pipeline(
                     _ => unimplemented!(),
                 };
 
-                vk::PipelineShaderStageCreateInfo::builder()
+                vk::PipelineShaderStageCreateInfo::default()
                     .module(shader_module)
                     .name(entry_names.add(CString::new(desc.desc.entry.as_str()).unwrap()))
                     .stage(stage)
-                    .build()
             })
             .collect();
 
@@ -900,7 +893,7 @@ pub fn create_raster_pipeline(
             ..Default::default()
         };
 
-        let viewport_state_info = vk::PipelineViewportStateCreateInfo::builder()
+        let viewport_state_info = vk::PipelineViewportStateCreateInfo::default()
             .viewport_count(1)
             .scissor_count(1);
 
@@ -947,18 +940,18 @@ pub fn create_raster_pipeline(
                 src_alpha_blend_factor: vk::BlendFactor::ZERO,
                 dst_alpha_blend_factor: vk::BlendFactor::ZERO,
                 alpha_blend_op: vk::BlendOp::ADD,
-                color_write_mask: vk::ColorComponentFlags::all(),
+                color_write_mask: vk::ColorComponentFlags::RGBA,
             };
             color_attachment_count
         ];
-        let color_blend_state = vk::PipelineColorBlendStateCreateInfo::builder()
+        let color_blend_state = vk::PipelineColorBlendStateCreateInfo::default()
             .attachments(&color_blend_attachment_states);
 
         let dynamic_state = [vk::DynamicState::VIEWPORT, vk::DynamicState::SCISSOR];
         let dynamic_state_info =
-            vk::PipelineDynamicStateCreateInfo::builder().dynamic_states(&dynamic_state);
+            vk::PipelineDynamicStateCreateInfo::default().dynamic_states(&dynamic_state);
 
-        let graphic_pipeline_info = vk::GraphicsPipelineCreateInfo::builder()
+        let graphic_pipeline_info = vk::GraphicsPipelineCreateInfo::default()
             .stages(&shader_stage_create_infos)
             .vertex_input_state(&vertex_input_state_info)
             .input_assembly_state(&vertex_input_assembly_state_info)
@@ -973,11 +966,7 @@ pub fn create_raster_pipeline(
 
         let pipeline = device
             .raw
-            .create_graphics_pipelines(
-                vk::PipelineCache::null(),
-                &[graphic_pipeline_info.build()],
-                None,
-            )
+            .create_graphics_pipelines(vk::PipelineCache::null(), &[graphic_pipeline_info], None)
             .expect("Unable to create graphics pipeline")[0];
 
         let mut descriptor_pool_sizes: Vec<vk::DescriptorPoolSize> = Vec::new();

@@ -1,6 +1,5 @@
 use anyhow::Context;
-use exr::prelude::{self as exrs, ReadChannels as _, ReadLayers as _};
-use half::f16;
+use exr::prelude::{self as exrs, f16, ReadChannels as _, ReadLayers as _};
 use std::{fs::File, io::BufReader, path::Path, sync::Arc};
 
 use kajiya_backend::{
@@ -48,7 +47,11 @@ impl IblRenderer {
                             ImageDesc::new_2d(vk::Format::R16G16B16A16_SFLOAT, image.size)
                                 .usage(ImageUsageFlags::SAMPLED),
                             vec![ImageSubResourceData {
-                                data: bytemuck::checked::cast_slice(image.data.as_slice()),
+                                data: bytemuck::checked::cast_slice(unsafe {
+                                    std::mem::transmute::<&[f16], &[half::f16]>(
+                                        image.data.as_slice(),
+                                    )
+                                }),
                                 row_pitch: (image.size[0] * PIXEL_BYTES) as usize,
                                 slice_pitch: (image.size[0] * image.size[1] * PIXEL_BYTES) as usize,
                             }],

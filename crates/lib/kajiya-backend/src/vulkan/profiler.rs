@@ -1,21 +1,22 @@
 use ash::vk;
+use gpu_allocator::vulkan::AllocationScheme;
 use gpu_profiler::backend::ash::VulkanProfilerFrame;
 
 pub struct ProfilerBuffer {
     buffer: vk::Buffer,
-    allocation: gpu_allocator::SubAllocation,
+    allocation: gpu_allocator::vulkan::Allocation,
 }
 
 pub struct ProfilerBackend<'dev, 'alloc> {
     device: &'dev ash::Device,
-    allocator: &'alloc mut gpu_allocator::VulkanAllocator,
+    allocator: &'alloc mut gpu_allocator::vulkan::Allocator,
     timestamp_period: f32,
 }
 
 impl<'device, 'alloc> ProfilerBackend<'device, 'alloc> {
     pub fn new(
         device: &'device ash::Device,
-        allocator: &'alloc mut gpu_allocator::VulkanAllocator,
+        allocator: &'alloc mut gpu_allocator::vulkan::Allocator,
         timestamp_period: f32,
     ) -> ProfilerBackend<'device, 'alloc> {
         Self {
@@ -48,11 +49,12 @@ impl<'dev, 'alloc> gpu_profiler::backend::ash::VulkanBackend for ProfilerBackend
 
         let allocation = self
             .allocator
-            .allocate(&gpu_allocator::AllocationCreateDesc {
+            .allocate(&gpu_allocator::vulkan::AllocationCreateDesc {
                 name: "buffer",
                 requirements,
                 location: gpu_allocator::MemoryLocation::GpuToCpu,
-                linear: true, // Buffers are always linear
+                linear: true,
+                allocation_scheme: AllocationScheme::GpuAllocatorManaged,
             })
             .unwrap();
 

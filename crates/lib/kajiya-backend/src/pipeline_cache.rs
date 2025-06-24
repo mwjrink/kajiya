@@ -2,7 +2,7 @@ use crate::{
     rust_shader_compiler::CompileRustShader,
     shader_compiler::{CompileShader, CompiledShader},
     vulkan::{
-        ray_tracing::{create_ray_tracing_pipeline, RayTracingPipeline, RayTracingPipelineDesc},
+        ray_tracing::{RayTracingPipeline, RayTracingPipelineDesc, create_ray_tracing_pipeline},
         shader::*,
     },
 };
@@ -40,28 +40,26 @@ impl LazyWorker for CompilePipelineShaders {
     type Output = anyhow::Result<CompiledPipelineShaders>;
 
     async fn run(self, ctx: RunContext) -> Self::Output {
-        let shaders = futures::future::try_join_all(self.shader_descs.iter().map(|desc| {
-            match &desc.source {
-                ShaderSource::Rust { entry } => CompileRustShader {
-                    entry: entry.clone(),
-                }
-                .into_lazy()
-                .eval(&ctx),
-                ShaderSource::Hlsl { path } => CompileShader {
-                    path: path.clone(),
-                    profile: match desc.stage {
-                        ShaderPipelineStage::Vertex => "vs".to_owned(),
-                        ShaderPipelineStage::Pixel => "ps".to_owned(),
-                        ShaderPipelineStage::RayGen
-                        | ShaderPipelineStage::RayMiss
-                        | ShaderPipelineStage::RayClosestHit => "lib".to_owned(),
-                    },
-                }
-                .into_lazy()
-                .eval(&ctx),
+        let shaders = self.shader_descs.iter().map(|desc| match &desc.source {
+            ShaderSource::Rust { entry } => CompileRustShader {
+                entry: entry.clone(),
             }
-        }))
-        .await?;
+            .into_lazy()
+            .eval(&ctx),
+            ShaderSource::Hlsl { path } => CompileShader {
+                path: path.clone(),
+                profile: match desc.stage {
+                    ShaderPipelineStage::Vertex => "vs".to_owned(),
+                    ShaderPipelineStage::Pixel => "ps".to_owned(),
+                    ShaderPipelineStage::RayGen
+                    | ShaderPipelineStage::RayMiss
+                    | ShaderPipelineStage::RayClosestHit => "lib".to_owned(),
+                },
+            }
+            .into_lazy()
+            .eval(&ctx),
+        });
+        let shaders = futures::future::try_join_all(shaders).await?;
 
         let shaders = shaders
             .into_iter()

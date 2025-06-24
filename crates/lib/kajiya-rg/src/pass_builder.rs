@@ -10,9 +10,9 @@ use super::{
 };
 
 use kajiya_backend::{
+    BackendError,
     vk_sync::{self, AccessType},
     vulkan::{ray_tracing::RayTracingPipelineDesc, shader::*},
-    BackendError,
 };
 use std::{marker::PhantomData, path::Path};
 

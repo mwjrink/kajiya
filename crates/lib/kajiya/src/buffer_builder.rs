@@ -1,4 +1,4 @@
-use kajiya_backend::{ash::vk, vulkan, BackendError};
+use kajiya_backend::{BackendError, ash::vk, vulkan};
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 use std::ops::Range;
@@ -142,11 +142,10 @@ impl BufferBuilder {
                     cb,
                     staging_buffer.raw,
                     target,
-                    &[vk::BufferCopy::builder()
+                    &[vk::BufferCopy::default()
                         .src_offset(0u64)
                         .dst_offset(target_offset + pending.offset + src_range.start as u64)
-                        .size((src_range.end - src_range.start) as u64)
-                        .build()],
+                        .size((src_range.end - src_range.start) as u64)],
                 );
             })?;
         }

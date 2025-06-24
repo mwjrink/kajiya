@@ -21,7 +21,7 @@ pub fn record_image_barrier(device: &Device, cb: vk::CommandBuffer, barrier: Ima
     };
 
     vk_sync::cmd::pipeline_barrier(
-        device.raw.fp_v1_0(),
+        &device.raw,
         cb,
         None,
         &[],

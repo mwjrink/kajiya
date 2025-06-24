@@ -8,6 +8,7 @@ use super::{
 };
 
 use kajiya_backend::{
+    BackendError,
     ash::vk,
     chunky_list::TempList,
     dynamic_constants::{
@@ -19,11 +20,10 @@ use kajiya_backend::{
         image::*,
         ray_tracing::{RayTracingAcceleration, RayTracingPipeline},
         shader::{
-            ComputePipeline, FramebufferCacheKey, RasterPipeline, ShaderPipelineCommon,
-            MAX_COLOR_ATTACHMENTS,
+            ComputePipeline, FramebufferCacheKey, MAX_COLOR_ATTACHMENTS, RasterPipeline,
+            ShaderPipelineCommon,
         },
     },
-    BackendError,
 };
 
 pub struct RenderPassApi<'a, 'exec_params, 'constants> {
@@ -210,36 +210,33 @@ impl<'a, 'exec_params, 'constants> RenderPassApi<'a, 'exec_params, 'constants> {
                 .map(|binding| {
                     Ok(match binding {
                         RenderPassBinding::Image(image) => DescriptorSetBinding::Image(
-                            vk::DescriptorImageInfo::builder()
+                            vk::DescriptorImageInfo::default()
                                 .image_layout(image.image_layout)
                                 .image_view(
                                     self.resources.image_view(image.handle, &image.view_desc)?,
-                                )
-                                .build(),
+                                ),
                         ),
                         RenderPassBinding::ImageArray(images) => DescriptorSetBinding::ImageArray(
                             images
                                 .iter()
                                 .map(|image| {
-                                    Ok(vk::DescriptorImageInfo::builder()
+                                    Ok(vk::DescriptorImageInfo::default()
                                         .image_layout(image.image_layout)
                                         .image_view(
                                             self.resources
                                                 .image_view(image.handle, &image.view_desc)?,
-                                        )
-                                        .build())
+                                        ))
                                 })
                                 .collect::<Result<Vec<_>, BackendError>>()?,
                         ),
                         RenderPassBinding::Buffer(buffer) => DescriptorSetBinding::Buffer(
-                            vk::DescriptorBufferInfo::builder()
+                            vk::DescriptorBufferInfo::default()
                                 .buffer(
                                     self.resources
                                         .buffer_from_raw_handle::<GpuSrv>(buffer.handle)
                                         .raw,
                                 )
-                                .range(vk::WHOLE_SIZE)
-                                .build(),
+                                .range(vk::WHOLE_SIZE),
                         ),
                         RenderPassBinding::RayTracingAcceleration(acc) => {
                             DescriptorSetBinding::RayTracingAcceleration(
@@ -250,19 +247,17 @@ impl<'a, 'exec_params, 'constants> RenderPassApi<'a, 'exec_params, 'constants> {
                         }
                         RenderPassBinding::DynamicConstants(offset) => {
                             DescriptorSetBinding::DynamicBuffer {
-                                buffer: vk::DescriptorBufferInfo::builder()
+                                buffer: vk::DescriptorBufferInfo::default()
                                     .buffer(self.resources.dynamic_constants.buffer.raw)
-                                    .range(MAX_DYNAMIC_CONSTANTS_BYTES_PER_DISPATCH as u64)
-                                    .build(),
+                                    .range(MAX_DYNAMIC_CONSTANTS_BYTES_PER_DISPATCH as u64),
                                 offset: *offset,
                             }
                         }
                         RenderPassBinding::DynamicConstantsStorageBuffer(offset) => {
                             DescriptorSetBinding::DynamicStorageBuffer {
-                                buffer: vk::DescriptorBufferInfo::builder()
+                                buffer: vk::DescriptorBufferInfo::default()
                                     .buffer(self.resources.dynamic_constants.buffer.raw)
-                                    .range(MAX_DYNAMIC_CONSTANTS_STORAGE_BUFFER_BYTES as u64)
-                                    .build(),
+                                    .range(MAX_DYNAMIC_CONSTANTS_STORAGE_BUFFER_BYTES as u64),
                                 offset: *offset,
                             }
                         }
@@ -332,7 +327,7 @@ impl<'a, 'exec_params, 'constants> RenderPassApi<'a, 'exec_params, 'constants> {
 
         // Bind images to the imageless framebuffer
         let image_attachments: Result<
-            ArrayVec<[vk::ImageView; MAX_COLOR_ATTACHMENTS + 1]>,
+            ArrayVec<vk::ImageView, { MAX_COLOR_ATTACHMENTS + 1 }>,
             BackendError,
         > = color_attachments
             .iter()
@@ -342,12 +337,12 @@ impl<'a, 'exec_params, 'constants> RenderPassApi<'a, 'exec_params, 'constants> {
         let image_attachments = image_attachments?;
 
         let mut pass_attachment_desc =
-            vk::RenderPassAttachmentBeginInfoKHR::builder().attachments(&image_attachments);
+            vk::RenderPassAttachmentBeginInfoKHR::default().attachments(&image_attachments);
 
         let [width, height] = dims;
 
         //.clear_values(&clear_values)
-        let pass_begin_desc = vk::RenderPassBeginInfo::builder()
+        let pass_begin_desc = vk::RenderPassBeginInfo::default()
             .render_pass(render_pass.raw)
             .framebuffer(framebuffer)
             .render_area(vk::Rect2D {
@@ -659,7 +654,7 @@ fn bind_descriptor_set(
     let raw_device = &device.raw;
 
     let descriptor_pool = {
-        let descriptor_pool_create_info = vk::DescriptorPoolCreateInfo::builder()
+        let descriptor_pool_create_info = vk::DescriptorPoolCreateInfo::default()
             .max_sets(1)
             .pool_sizes(&pipeline.descriptor_pool_sizes);
 
@@ -668,7 +663,7 @@ fn bind_descriptor_set(
     device.defer_release(descriptor_pool);
 
     let descriptor_set = {
-        let descriptor_set_allocate_info = vk::DescriptorSetAllocateInfo::builder()
+        let descriptor_set_allocate_info = vk::DescriptorSetAllocateInfo::default()
             .descriptor_pool(descriptor_pool)
             .set_layouts(std::slice::from_ref(
                 &pipeline.descriptor_set_layouts[set_index as usize],
@@ -685,7 +680,7 @@ fn bind_descriptor_set(
                 .enumerate()
                 .filter(|(binding_idx, _)| shader_set_info.contains_key(&(*binding_idx as u32)))
                 .map(|(binding_idx, binding)| {
-                    let write = vk::WriteDescriptorSet::builder()
+                    let write = vk::WriteDescriptorSet::default()
                         .dst_set(descriptor_set)
                         .dst_binding(binding_idx as _)
                         .dst_array_element(0);
@@ -699,8 +694,7 @@ fn bind_descriptor_set(
                                 vk::ImageLayout::GENERAL => vk::DescriptorType::STORAGE_IMAGE,
                                 _ => unimplemented!("{:?}", image.image_layout),
                             })
-                            .image_info(std::slice::from_ref(image_info.add(*image)))
-                            .build(),
+                            .image_info(std::slice::from_ref(image_info.add(*image))),
                         DescriptorSetBinding::ImageArray(images) => {
                             assert!(!images.is_empty());
 
@@ -713,37 +707,31 @@ fn bind_descriptor_set(
                                     _ => unimplemented!("{:?}", images[0].image_layout),
                                 })
                                 .image_info(images.as_slice())
-                                .build()
                         }
                         DescriptorSetBinding::Buffer(buffer) => write
                             .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
-                            .buffer_info(std::slice::from_ref(buffer_info.add(*buffer)))
-                            .build(),
+                            .buffer_info(std::slice::from_ref(buffer_info.add(*buffer))),
                         DescriptorSetBinding::DynamicBuffer { buffer, offset } => {
                             dynamic_offsets.push(*offset);
                             write
                                 .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC)
                                 .buffer_info(std::slice::from_ref(buffer_info.add(*buffer)))
-                                .build()
                         }
                         DescriptorSetBinding::DynamicStorageBuffer { buffer, offset } => {
                             dynamic_offsets.push(*offset);
                             write
                                 .descriptor_type(vk::DescriptorType::STORAGE_BUFFER_DYNAMIC)
                                 .buffer_info(std::slice::from_ref(buffer_info.add(*buffer)))
-                                .build()
                         }
                         DescriptorSetBinding::RayTracingAcceleration(acc) => {
                             let mut write = write
                             .descriptor_type(vk::DescriptorType::ACCELERATION_STRUCTURE_KHR)
                             .push_next(
                                 accel_info.add(UnsafeCell::new(
-                                    vk::WriteDescriptorSetAccelerationStructureKHR::builder()
-                                        .acceleration_structures(std::slice::from_ref(acc))
-                                        .build(),
+                                    vk::WriteDescriptorSetAccelerationStructureKHR::default()
+                                        .acceleration_structures(std::slice::from_ref(acc)),
                                 )).get().as_mut().unwrap(),
-                            )
-                            .build();
+                            );
 
                             // This is only set by the builder for images, buffers, or views; need to set explicitly after
                             write.descriptor_count = 1;

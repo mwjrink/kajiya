@@ -122,12 +122,13 @@ impl LazyWorker for LoadFile {
     type Output = anyhow::Result<Bytes>;
 
     async fn run(self, ctx: RunContext) -> Self::Output {
-        let invalidation_trigger = ctx.get_invalidation_trigger();
+        // let invalidation_trigger = ctx.get_invalidation_trigger();
 
         FILE_WATCHER
             .lock()
             .watch(self.path.clone(), move |event| {
-                if matches!(event, hotwatch::Event::Write(_)) {
+                if matches!(event.kind, hotwatch::EventKind::Modify(_)) {
+                    let invalidation_trigger = ctx.get_invalidation_trigger();
                     invalidation_trigger();
                 }
             })
@@ -140,7 +141,7 @@ impl LazyWorker for LoadFile {
         Ok(Bytes::from(buffer))
     }
 
-    fn debug_description(&self) -> Option<std::borrow::Cow<'static, str>> {
-        Some(format!("LoadFile({:?})", self.path).into())
-    }
+    // fn debug_description(&self) -> Option<std::borrow::Cow<'static, str>> {
+    //     Some(format!("LoadFile({:?})", self.path).into())
+    // }
 }

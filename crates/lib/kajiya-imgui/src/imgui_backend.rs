@@ -2,8 +2,8 @@ use std::sync::Arc;
 
 use kajiya::{
     backend::{
-        ash::{self, vk},
         Device, Image, ImageDesc, ImageViewDesc,
+        ash::{self, vk},
     },
     ui_renderer::UiRenderer,
 };
@@ -223,7 +223,7 @@ impl ImGuiBackendInner {
                         },
                     }];
 
-                    let render_pass_begin_info = vk::RenderPassBeginInfo::builder()
+                    let render_pass_begin_info = vk::RenderPassBeginInfo::default()
                         .render_pass(gfx.imgui_render_pass)
                         .framebuffer(gfx.imgui_framebuffer)
                         .render_area(vk::Rect2D {
@@ -290,12 +290,11 @@ fn create_imgui_render_pass(device: &ash::Device) -> vk::RenderPass {
         ..Default::default()
     }];
 
-    let subpasses = [vk::SubpassDescription::builder()
+    let subpasses = [vk::SubpassDescription::default()
         .color_attachments(&color_attachment_refs)
-        .pipeline_bind_point(vk::PipelineBindPoint::GRAPHICS)
-        .build()];
+        .pipeline_bind_point(vk::PipelineBindPoint::GRAPHICS)];
 
-    let renderpass_create_info = vk::RenderPassCreateInfo::builder()
+    let renderpass_create_info = vk::RenderPassCreateInfo::default()
         .attachments(&renderpass_attachments)
         .subpasses(&subpasses)
         .dependencies(&dependencies);
@@ -323,7 +322,7 @@ fn create_imgui_framebuffer(
         .unwrap();
 
     let framebuffer_attachments = [tex.view(device, &ImageViewDesc::default()).unwrap()];
-    let frame_buffer_create_info = vk::FramebufferCreateInfo::builder()
+    let frame_buffer_create_info = vk::FramebufferCreateInfo::default()
         .render_pass(render_pass)
         .attachments(&framebuffer_attachments)
         .width(surface_resolution[0] as _)

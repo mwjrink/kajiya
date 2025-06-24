@@ -1,7 +1,7 @@
 mod input;
 mod main_loop;
 
-pub use glam::*;
+pub use glam::{f32::Vec3, *};
 pub use input::*;
 pub use kajiya::{
     backend::{

@@ -32,7 +32,7 @@ impl CrashMarkerNames {
     }
 }
 
-impl Device {
+impl Device<'_> {
     pub fn record_crash_marker(&self, cb: &CommandBuffer, name: String) {
         let mut names = self.crash_marker_names.lock();
         let idx = names.insert_name(name);
@@ -69,8 +69,11 @@ impl Device {
                     )
                 }
                 _ => {
-                    format!("The GPU device has been lost. This is usually due to an infinite loop in a shader.\n\
-                    The last crash marker was: {}. The problem most likely exists directly after.", last_marker)
+                    format!(
+                        "The GPU device has been lost. This is usually due to an infinite loop in a shader.\n\
+                    The last crash marker was: {}. The problem most likely exists directly after.",
+                        last_marker
+                    )
                 }
             };
 

@@ -1,7 +1,6 @@
 use crate::file::LoadFile;
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{Context, Result, anyhow, bail};
 use bytes::Bytes;
-use relative_path::RelativePathBuf;
 use std::{path::PathBuf, sync::Arc};
 use turbosloth::*;
 
@@ -114,30 +113,39 @@ struct ShaderIncludeProvider {
 impl shader_prepper::IncludeProvider for ShaderIncludeProvider {
     type IncludeContext = String;
 
-    fn get_include(
-        &mut self,
+    fn resolve_path(
+        &self,
         path: &str,
-        parent_file: &Self::IncludeContext,
+        context: &Self::IncludeContext,
     ) -> std::result::Result<
-        (String, Self::IncludeContext),
+        shader_prepper::ResolvedInclude<Self::IncludeContext>,
         shader_prepper::BoxedIncludeProviderError,
     > {
-        let resolved_path = if let Some('/') = path.chars().next() {
-            path.to_owned()
+        let context = context.clone();
+        Ok(shader_prepper::ResolvedInclude {
+            resolved_path: shader_prepper::ResolvedIncludePath(path.to_owned()),
+            context: context,
+        })
+    }
+
+    fn get_include(
+        &mut self,
+        path: &shader_prepper::ResolvedIncludePath,
+    ) -> Result<String, shader_prepper::BoxedIncludeProviderError> {
+        let resolved_path = if let Some('/') = path.0.chars().next() {
+            &path.to_owned()
         } else {
-            let mut folder: RelativePathBuf = parent_file.into();
-            folder.pop();
-            folder.join(path).as_str().to_string()
+            path
         };
 
         let blob: Arc<Bytes> = smol::block_on(
-            crate::file::LoadFile::new(&resolved_path)
-                .with_context(|| format!("Failed loading shader include {}", path))?
+            crate::file::LoadFile::new(&resolved_path.0)
+                .with_context(|| format!("Failed loading shader include {}", path.0))?
                 .into_lazy()
                 .eval(&self.ctx),
         )?;
 
-        Ok((String::from_utf8(blob.to_vec())?, resolved_path))
+        Ok(String::from_utf8(blob.to_vec())?)
     }
 }
 
@@ -150,9 +158,9 @@ pub fn get_cs_local_size_from_spirv(spirv: &[u32]) -> Result<[u32; 3]> {
         //if spirv_headers::Op::ExecutionMode == inst.class.opcode {
         if inst.class.opcode as u32 == 16 {
             let local_size = &inst.operands[2..5];
-            use rspirv::dr::Operand::LiteralInt32;
+            use rspirv::dr::Operand::LiteralBit32;
 
-            if let [LiteralInt32(x), LiteralInt32(y), LiteralInt32(z)] = *local_size {
+            if let [LiteralBit32(x), LiteralBit32(y), LiteralBit32(z)] = *local_size {
                 return Ok([x, y, z]);
             } else {
                 bail!("Could not parse the ExecutionMode SPIR-V op");
@@ -165,7 +173,7 @@ pub fn get_cs_local_size_from_spirv(spirv: &[u32]) -> Result<[u32; 3]> {
 
 fn compile_generic_shader_hlsl_impl(
     name: &str,
-    source: &[shader_prepper::SourceChunk],
+    source: &[shader_prepper::SourceChunk<String>],
     target_profile: &str,
 ) -> Result<Bytes> {
     let mut source_text = String::new();

@@ -1,20 +1,28 @@
 use anyhow::Result;
-use ash::{extensions::khr, vk};
+use ash::vk;
+use raw_window_handle::{HasDisplayHandle, HasWindowHandle};
 use std::sync::Arc;
 
 pub struct Surface {
     pub(crate) raw: vk::SurfaceKHR,
-    pub(crate) fns: khr::Surface,
+    pub(crate) fns: ash::khr::surface::Instance,
 }
 
 impl Surface {
-    pub fn create(
-        instance: &super::instance::Instance,
-        window: &impl raw_window_handle::HasRawWindowHandle,
-    ) -> Result<Arc<Self>> {
-        let surface =
-            unsafe { ash_window::create_surface(&instance.entry, &instance.raw, window, None)? };
-        let surface_loader = khr::Surface::new(&instance.entry, &instance.raw);
+    pub fn create<T>(instance: &super::instance::Instance, window: &T) -> Result<Arc<Self>>
+    where
+        T: HasDisplayHandle + HasWindowHandle,
+    {
+        let surface = unsafe {
+            ash_window::create_surface(
+                &instance.entry,
+                &instance.raw,
+                window.display_handle().unwrap().as_raw(),
+                window.window_handle().unwrap().as_raw(),
+                None,
+            )?
+        };
+        let surface_loader = ash::khr::surface::Instance::new(&instance.entry, &instance.raw);
 
         Ok(Arc::new(Self {
             raw: surface,

@@ -1,7 +1,7 @@
 use crate::{
     bindless_descriptor_set::{
-        create_bindless_descriptor_set, BINDLESS_DESCRIPTOR_SET_LAYOUT,
-        BINDLESS_TEXURES_BINDING_INDEX,
+        BINDLESS_DESCRIPTOR_SET_LAYOUT, BINDLESS_TEXURES_BINDING_INDEX,
+        create_bindless_descriptor_set,
     },
     buffer_builder::BufferBuilder,
     frame_desc::WorldFrameDesc,
@@ -15,11 +15,11 @@ use crate::{
 use glam::{Affine3A, Vec2, Vec3};
 use kajiya_asset::mesh::{AssetRef, GpuImage, MeshMaterialFlags, PackedTriMesh, PackedVertex};
 use kajiya_backend::{
+    BackendError,
     ash::vk::{self, ImageView},
     dynamic_constants::DynamicConstants,
     vk_sync::{self, AccessType},
-    vulkan::{self, device, image::*, ray_tracing::*, shader::*, RenderBackend},
-    BackendError,
+    vulkan::{self, RenderBackend, device, image::*, ray_tracing::*, shader::*},
 };
 use kajiya_rg::{self as rg};
 #[allow(unused_imports)]
@@ -28,7 +28,7 @@ use parking_lot::Mutex;
 use rg::renderer::FrameConstantsLayout;
 use rust_shaders_shared::{
     camera::CameraMatrices,
-    frame_constants::{FrameConstants, IrcacheCascadeConstants, IRCACHE_CASCADE_COUNT},
+    frame_constants::{FrameConstants, IRCACHE_CASCADE_COUNT, IrcacheCascadeConstants},
     render_overrides::RenderOverrides,
     view_constants::ViewConstants,
 };
@@ -521,17 +521,15 @@ impl WorldRenderer {
         dst_binding: u32,
         buffer: &Buffer,
     ) {
-        let buffer_info = vk::DescriptorBufferInfo::builder()
+        let buffer_info = vk::DescriptorBufferInfo::default()
             .buffer(buffer.raw)
-            .range(vk::WHOLE_SIZE)
-            .build();
+            .range(vk::WHOLE_SIZE);
 
-        let write_descriptor_set = vk::WriteDescriptorSet::builder()
+        let write_descriptor_set = vk::WriteDescriptorSet::default()
             .dst_set(set)
             .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
             .dst_binding(dst_binding)
-            .buffer_info(std::slice::from_ref(&buffer_info))
-            .build();
+            .buffer_info(std::slice::from_ref(&buffer_info));
 
         unsafe {
             device.update_descriptor_sets(std::slice::from_ref(&write_descriptor_set), &[]);
@@ -542,18 +540,16 @@ impl WorldRenderer {
         let handle = BindlessImageHandle(self.next_bindless_image_id as _);
         self.next_bindless_image_id += 1;
 
-        let image_info = vk::DescriptorImageInfo::builder()
+        let image_info = vk::DescriptorImageInfo::default()
             .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
-            .image_view(view)
-            .build();
+            .image_view(view);
 
-        let write_descriptor_set = vk::WriteDescriptorSet::builder()
+        let write_descriptor_set = vk::WriteDescriptorSet::default()
             .dst_set(self.bindless_descriptor_set)
             .descriptor_type(vk::DescriptorType::SAMPLED_IMAGE)
             .dst_binding(BINDLESS_TEXURES_BINDING_INDEX as _)
             .dst_array_element(handle.0 as _)
-            .image_info(std::slice::from_ref(&image_info))
-            .build();
+            .image_info(std::slice::from_ref(&image_info));
 
         unsafe {
             self.device
