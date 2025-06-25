@@ -1,26 +1,31 @@
 #![allow(clippy::single_match)]
 
 use anyhow::Context;
-
 use dolly::prelude::*;
 use kajiya::{
+    camera::CameraLens,
+    frame_desc::WorldFrameDesc,
+    math::{Quat, Vec3},
     rg::GraphDebugHook,
-    world_renderer::{AddMeshOptions, MeshHandle, WorldRenderer},
+    world_renderer::{AddMeshOptions, MeshHandle, RenderMode, WorldRenderer},
 };
-use kajiya_simple::*;
+use kajiya_simple::{
+    input::{KeyboardMap, KeyboardState, MouseState, PhysicalPosition},
+    main_loop::FrameContext,
+};
 
 use crate::{
+    PersistedState,
     opt::Opt,
     persisted::{MeshSource, SceneElement, SceneElementTransform, ShouldResetPathTracer as _},
     scene::SceneDesc,
     sequence::{CameraPlaybackSequence, MemOption, SequenceValue},
-    PersistedState,
 };
 
 use crate::keymap::KeymapConfig;
 use log::{info, warn};
 use std::{
-    collections::{hash_map::DefaultHasher, HashMap},
+    collections::{HashMap, hash_map::DefaultHasher},
     fs::File,
     hash::{Hash, Hasher},
     path::PathBuf,
@@ -41,7 +46,7 @@ pub struct RuntimeState {
 
     pub max_fps: u32,
     pub locked_rg_debug_hook: Option<GraphDebugHook>,
-    pub grab_cursor_pos: winit::dpi::PhysicalPosition<f64>,
+    pub grab_cursor_pos: PhysicalPosition,
 
     pub reset_path_tracer: bool,
 
@@ -67,8 +72,8 @@ impl RuntimeState {
         opt: &Opt,
     ) -> Self {
         let camera: CameraRig = CameraRig::builder()
-            .with(Position::new(persisted.camera.position))
-            .with(YawPitch::new().rotation_quat(persisted.camera.rotation))
+            .with(Position::new(glame::Vec3::from(persisted.camera.position)))
+            .with(YawPitch::new().rotation_quat(glame::Quat::from(persisted.camera.rotation)))
             .with(Smooth::default())
             .build();
 
@@ -201,32 +206,31 @@ impl RuntimeState {
 
         // When starting camera rotation, hide the mouse cursor, and capture it to the window.
         if (self.mouse.buttons_pressed & (1 << 2)) != 0 {
-            let _ = ctx.window.set_cursor_grab(true);
+            let _ = ctx.window.set_cursor_grab(CursorGrabMode::Confined);
             self.grab_cursor_pos = self.mouse.physical_position;
             ctx.window.set_cursor_visible(false);
         }
 
         // When ending camera rotation, release the cursor.
         if (self.mouse.buttons_released & (1 << 2)) != 0 {
-            let _ = ctx.window.set_cursor_grab(false);
+            let _ = ctx.window.set_cursor_grab(CursorGrabMode::None);
             ctx.window.set_cursor_visible(true);
         }
 
         let input = self.movement_map.map(&self.keyboard, ctx.dt_filtered);
         let move_vec = self.camera.final_transform.rotation
-            * Vec3::new(input["move_right"], input["move_up"], -input["move_fwd"])
-                .clamp_length_max(1.0)
-            * 4.0f32.powf(input["boost"]);
+            * (Vec3::from(
+                Vec3::new(input["move_right"], input["move_up"], -input["move_fwd"])
+                    .clamp_length_max(1.0),
+            ) * 4.0f32.powf(input["boost"]));
 
         if (self.mouse.buttons_held & (1 << 2)) != 0 {
             // While we're rotating, the cursor should not move, so that upon revealing it,
             // it will be where we started the rotation motion at.
-            let _ = ctx
-                .window
-                .set_cursor_position(winit::dpi::PhysicalPosition::new(
-                    self.grab_cursor_pos.x,
-                    self.grab_cursor_pos.y,
-                ));
+            let _ = ctx.window.set_cursor_position(PhysicalPosition::new(
+                self.grab_cursor_pos.x,
+                self.grab_cursor_pos.y,
+            ));
 
             let sensitivity = 0.1;
             self.camera.driver_mut::<YawPitch>().rotate_yaw_pitch(
@@ -237,7 +241,7 @@ impl RuntimeState {
 
         self.camera
             .driver_mut::<Position>()
-            .translate(move_vec * ctx.dt_filtered * persisted.movement.camera_speed);
+            .translate(move_vec.into() * ctx.dt_filtered * persisted.movement.camera_speed);
 
         if let SequencePlaybackState::Playing { t, sequence } = &mut self.sequence_playback_state {
             let smooth = self.camera.driver_mut::<Smooth>();
@@ -250,12 +254,17 @@ impl RuntimeState {
             }
 
             if let Some(value) = sequence.sample(t.max(0.0)) {
-                self.camera.driver_mut::<Position>().position = value.camera_position;
+                self.camera.driver_mut::<Position>().position =
+                    glam::Vec3::from(value.camera_position);
                 self.camera
                     .driver_mut::<YawPitch>()
-                    .set_rotation_quat(dolly::util::look_at::<dolly::handedness::RightHanded>(
+                    .set_rotation_quat(dolly::util::look_at::<
+                        dolly::handedness::RightHanded,
+                        Vec3,
+                        glam::Quat,
+                    >(glam::Quat::from(
                         value.camera_direction,
-                    ));
+                    )));
                 persisted
                     .light
                     .sun
@@ -268,10 +277,10 @@ impl RuntimeState {
             }
         }
 
-        self.camera.update(ctx.dt_filtered);
+        let final_transform = self.camera.update(ctx.dt_filtered);
 
-        persisted.camera.position = self.camera.final_transform.position;
-        persisted.camera.rotation = self.camera.final_transform.rotation;
+        persisted.camera.position = glam::Vec3::from(final_transform.position);
+        persisted.camera.rotation = glam::Vec3::from(final_transform.rotation);
 
         if self
             .keyboard
@@ -496,12 +505,11 @@ impl RuntimeState {
             ..Default::default()
         };
 
+        let transform = self.camera.final_transform;
+        let pos_rot = transform.into_position_rotation();
+        let pos_rot = (glam::Vec3::from(pos_rot.0), glam::Quat::from(pos_rot.1));
         WorldFrameDesc {
-            camera_matrices: self
-                .camera
-                .final_transform
-                .into_position_rotation()
-                .through(&lens),
+            camera_matrices: pos_rot.through(&lens),
             render_extent: ctx.render_extent,
             sun_direction: self.sun_direction_interp,
         }
@@ -556,18 +564,24 @@ impl RuntimeState {
         };
 
         if let Some(value) = persisted.sequence.to_playback().sample(exact_item.t) {
-            self.camera.driver_mut::<Position>().position = exact_item
-                .value
-                .camera_position
-                .unwrap_or(value.camera_position);
+            self.camera.driver_mut::<Position>().position = glam::Vec3::from(
+                exact_item
+                    .value
+                    .camera_position
+                    .unwrap_or(value.camera_position),
+            );
             self.camera
                 .driver_mut::<YawPitch>()
-                .set_rotation_quat(dolly::util::look_at::<dolly::handedness::RightHanded>(
+                .set_rotation_quat(dolly::util::look_at::<
+                    dolly::handedness::RightHanded,
+                    glam::Vec3,
+                    glam::Quat,
+                >(glam::Vec3::from(
                     exact_item
                         .value
                         .camera_direction
                         .unwrap_or(value.camera_direction),
-                ));
+                )));
 
             self.camera.update(1e10);
 

@@ -1,8 +1,7 @@
-use anyhow::{anyhow, Context};
-use kajiya_simple::{KeyMap, KeyboardMap, VirtualKeyCode, VirtualKeyCode::*};
+use anyhow::{Context, anyhow};
 use serde::{Deserialize, Serialize};
 use std::{
-    fs::{canonicalize, File},
+    fs::{File, canonicalize},
     io::Read,
     path::PathBuf,
 };

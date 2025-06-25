@@ -1,5 +1,4 @@
 use kajiya::world_renderer::AddMeshOptions;
-use kajiya_simple::*;
 
 fn main() -> anyhow::Result<()> {
     let mut kajiya = SimpleMainLoop::builder().resolution([1920, 1080]).build(

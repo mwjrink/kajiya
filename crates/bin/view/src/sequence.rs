@@ -1,5 +1,3 @@
-use kajiya_simple::Vec3;
-
 #[derive(Default, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Sequence {
     items: Vec<SequenceItem>,
@@ -30,11 +28,7 @@ impl<T> MemOption<T> {
     where
         T: Copy,
     {
-        if self.is_some {
-            self.item
-        } else {
-            other
-        }
+        if self.is_some { self.item } else { other }
     }
 }
 

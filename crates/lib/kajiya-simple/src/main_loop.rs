@@ -1,4 +1,4 @@
-use std::collections::VecDeque;
+use std::{collections::VecDeque, time::Instant};
 
 use kajiya::{
     backend::{vulkan::RenderBackendConfig, *},
@@ -159,17 +159,20 @@ impl SimpleMainLoopBuilder {
         self
     }
 
-    pub fn build(self, window_builder: WindowAttributes) -> anyhow::Result<SimpleMainLoop> {
+    pub fn build(
+        self,
+        window_builder: WindowAttributes,
+    ) -> anyhow::Result<SimpleMainLoop<'static>> {
         SimpleMainLoop::build(self, window_builder)
     }
 }
 
-pub struct SimpleMainLoop {
-    app: SimpleApp,
+pub struct SimpleMainLoop<'a> {
+    pub app: SimpleApp<'a>,
     event_loop: EventLoop<()>,
 }
 
-struct SimpleApp {
+struct SimpleApp<'a> {
     // this is pain... not sure how else to do with without the options...
     // ideally some uninint or something... it'd be nice if the compiler
     // knew somehow/we could indicate when they are initialized.
@@ -178,7 +181,7 @@ struct SimpleApp {
     builder: Option<SimpleMainLoopBuilder>,
     window: Option<Window>,
 
-    world_renderer: Option<WorldRenderer>,
+    pub world_renderer: Option<WorldRenderer>,
     ui_renderer: Option<UiRenderer>,
 
     optional: Option<MainLoopOptional>,
@@ -187,17 +190,24 @@ struct SimpleApp {
     rg_renderer: Option<kajiya::rg::renderer::Renderer>,
     render_extent: Option<[u32; 2]>,
 
-    frame_fn: Option<Box<dyn FnMut(FrameContext) -> WorldFrameDesc>>,
+    frame_fn: Option<Box<dyn FnMut(FrameContext) -> WorldFrameDesc + 'a>>,
+
+    last_frame_instant: Option<Instant>,
+    last_error_text: Option<String>,
+
+    // Fake the first frame's delta time. In the first frame, shaders
+    // and pipelines are be compiled, so it will most likely have a spike.
+    fake_dt_countdown: i32,
 }
 
-impl SimpleApp {
+impl SimpleApp<'_> {
     pub fn window_aspect_ratio(&self) -> f32 {
         let window = self.window.as_ref().unwrap();
         window.inner_size().width as f32 / window.inner_size().height as f32
     }
 }
 
-impl ApplicationHandler for SimpleApp {
+impl ApplicationHandler for SimpleApp<'_> {
     fn resumed(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
         let mut attributes = self.window_attributes.take().unwrap();
         let builder = self.builder.take().unwrap();
@@ -269,7 +279,7 @@ impl ApplicationHandler for SimpleApp {
         .unwrap();
         let ui_renderer = UiRenderer::default();
 
-        let rg_renderer = kajiya::rg::renderer::Renderer::new(&render_backend)?;
+        let rg_renderer = kajiya::rg::renderer::Renderer::new(&render_backend).unwrap();
 
         #[cfg(feature = "dear-imgui")]
         let mut imgui = imgui::Context::create();
@@ -300,6 +310,15 @@ impl ApplicationHandler for SimpleApp {
         };
 
         self.window = Some(window);
+        self.world_renderer = Some(world_renderer);
+        self.ui_renderer = Some(ui_renderer);
+        self.optional = Some(optional);
+        self.render_backend = Some(render_backend);
+        self.rg_renderer = Some(rg_renderer);
+        self.render_extent = Some(render_extent);
+
+        self.last_frame_instant = Some(Instant::now());
+        self.last_error_text = None;
     }
 
     fn new_events(
@@ -315,16 +334,14 @@ impl ApplicationHandler for SimpleApp {
         window_id: winit::window::WindowId,
         event: WindowEvent,
     ) {
-        let mut window_attributes = self.window_attributes.as_mut().unwrap();
-        let mut builder = self.builder.as_mut().unwrap();
-        let mut window = self.window.as_mut().unwrap();
+        let window = self.window.as_mut().unwrap();
         let mut world_renderer = self.world_renderer.as_mut().unwrap();
         let mut ui_renderer = self.ui_renderer.as_mut().unwrap();
-        let mut optional = self.optional.as_mut().unwrap();
-        let mut render_backend = self.render_backend.as_mut().unwrap();
-        let mut rg_renderer = self.rg_renderer.as_mut().unwrap();
-        let mut render_extent = self.render_extent.as_mut().unwrap();
-        let mut frame_fn = self.frame_fn.as_mut().unwrap();
+        let optional = self.optional.as_mut().unwrap();
+        let render_backend = self.render_backend.as_mut().unwrap();
+        let rg_renderer = self.rg_renderer.as_mut().unwrap();
+        let render_extent = self.render_extent.as_mut().unwrap();
+        let frame_fn = self.frame_fn.as_mut().unwrap();
 
         let generic_event = winit::event::Event::WindowEvent {
             window_id: window.id(),
@@ -333,18 +350,11 @@ impl ApplicationHandler for SimpleApp {
 
         let mut events = Vec::new();
 
-        let mut last_frame_instant = std::time::Instant::now();
-        let mut last_error_text = None;
-
         // Delta times are filtered over _this many_ frames.
         const DT_FILTER_WIDTH: usize = 10;
 
         // Past delta times used for filtering
         let mut dt_queue: VecDeque<f32> = VecDeque::with_capacity(DT_FILTER_WIDTH);
-
-        // Fake the first frame's delta time. In the first frame, shaders
-        // and pipelines are be compiled, so it will most likely have a spike.
-        let mut fake_dt_countdown: i32 = 1;
 
         puffin::profile_scope!("event handler");
 
@@ -370,7 +380,10 @@ impl ApplicationHandler for SimpleApp {
 
         let mut allow_event = true;
         match &generic_event {
-            Event::WindowEvent { window_id, event } => match &event {
+            Event::WindowEvent {
+                window_id: _,
+                event,
+            } => match &event {
                 WindowEvent::CloseRequested => {
                     event_loop.exit();
                 }
@@ -399,15 +412,15 @@ impl ApplicationHandler for SimpleApp {
         // don't need to worry about it.
         let dt_filtered = {
             let now = std::time::Instant::now();
-            let dt_duration = now - last_frame_instant;
-            last_frame_instant = now;
+            let dt_duration = now - self.last_frame_instant.unwrap();
+            self.last_frame_instant = Some(now);
 
             let dt_raw = dt_duration.as_secs_f32();
 
             // >= because rendering (and thus the spike) happens _after_ this.
-            if fake_dt_countdown >= 0 {
+            if self.fake_dt_countdown >= 0 {
                 // First frame. Return the fake value.
-                fake_dt_countdown -= 1;
+                self.fake_dt_countdown -= 1;
                 dt_raw.min(1.0 / 60.0)
             } else {
                 // Not the first frame. Start averaging.
@@ -485,13 +498,13 @@ impl ApplicationHandler for SimpleApp {
                     &mut render_backend.swapchain,
                 );
                 world_renderer.retire_frame();
-                last_error_text = None;
+                self.last_error_text = None;
             }
             Err(e) => {
                 let error_text = Some(format!("{:?}", e));
-                if error_text != last_error_text {
+                if error_text != self.last_error_text {
                     println!("{}", error_text.as_ref().unwrap());
-                    last_error_text = error_text;
+                    self.last_error_text = error_text;
                 }
             }
         }
@@ -503,7 +516,7 @@ impl ApplicationHandler for SimpleApp {
     }
 }
 
-impl SimpleMainLoop {
+impl SimpleMainLoop<'_> {
     pub fn builder() -> SimpleMainLoopBuilder {
         SimpleMainLoopBuilder::new()
     }
@@ -513,7 +526,7 @@ impl SimpleMainLoop {
         mut window_builder: WindowAttributes,
     ) -> anyhow::Result<Self> {
         kajiya::logging::set_up_logging(builder.default_log_level)?;
-        std::env::set_var("SMOL_THREADS", "64"); // HACK; TODO: get a real executor
+        unsafe { std::env::set_var("SMOL_THREADS", "64") }; // HACK; TODO: get a real executor
 
         // Note: asking for the logical size means that if the OS is using DPI scaling,
         // we'll get a physically larger window (with more pixels).
@@ -536,6 +549,9 @@ impl SimpleMainLoop {
             rg_renderer: None,
             render_extent: None,
             frame_fn: None,
+            last_frame_instant: None,
+            last_error_text: None,
+            fake_dt_countdown: 1,
         };
 
         Ok(Self {
@@ -544,21 +560,22 @@ impl SimpleMainLoop {
         })
     }
 
-    pub fn run<FrameFn>(self, frame_fn: FrameFn) -> anyhow::Result<()>
+    pub fn run<'a, FrameFn>(self, frame_fn: FrameFn) -> anyhow::Result<()>
     where
-        FrameFn: (FnMut(FrameContext) -> WorldFrameDesc) + 'static,
+        FrameFn: (FnMut(FrameContext) -> WorldFrameDesc) + 'a,
     {
-        let SimpleMainLoop {
-            mut app,
-            event_loop,
-        } = self;
+        let SimpleMainLoop { app, event_loop } = self;
 
-        // I have no idea why the compiler wants this fn to live statically.
-        // It seems obvious it only needs to live as long as this function.
-        let frame_fn = Box::new(frame_fn);
-        app.frame_fn = Some(frame_fn);
+        {
+            let mut app = app;
 
-        event_loop.run_app(&mut app);
+            // I have no idea why the compiler wants this fn to live statically.
+            // It seems obvious it only needs to live as long as this function.
+            let frame_fn = Box::new(frame_fn);
+            app.frame_fn = Some(frame_fn);
+
+            event_loop.run_app(&mut app)?;
+        }
 
         Ok(())
     }

@@ -2,11 +2,13 @@
 
 use glam::Vec2;
 use std::collections::HashMap;
-pub use winit::event::{ElementState, KeyboardInput, VirtualKeyCode};
+pub use winit::event::ElementState;
 use winit::{
-    dpi::PhysicalPosition,
     event::{Event, WindowEvent},
+    keyboard::PhysicalKey,
 };
+
+pub type PhysicalPosition = winit::dpi::PhysicalPosition<f64>;
 
 #[derive(Clone)]
 pub struct KeyState {
@@ -15,35 +17,35 @@ pub struct KeyState {
 
 #[derive(Default, Clone)]
 pub struct KeyboardState {
-    keys_down: HashMap<VirtualKeyCode, KeyState>,
+    keys_down: HashMap<PhysicalKey, KeyState>,
 }
 
 impl KeyboardState {
-    pub fn is_down(&self, key: VirtualKeyCode) -> bool {
+    pub fn is_down(&self, key: PhysicalKey) -> bool {
         self.get_down(key).is_some()
     }
 
-    pub fn was_just_pressed(&self, key: VirtualKeyCode) -> bool {
+    pub fn was_just_pressed(&self, key: PhysicalKey) -> bool {
         self.get_down(key).map(|s| s.ticks == 1).unwrap_or_default()
     }
 
-    pub fn get_down(&self, key: VirtualKeyCode) -> Option<&KeyState> {
+    pub fn get_down(&self, key: PhysicalKey) -> Option<&KeyState> {
         self.keys_down.get(&key)
     }
 
-    pub fn update(&mut self, events: &[Event<'_, ()>]) {
+    pub fn update(&mut self, events: &[Event<()>]) {
         for event in events {
             if let Event::WindowEvent {
-                event: WindowEvent::KeyboardInput { input, .. },
+                event: WindowEvent::KeyboardInput { event, .. },
                 ..
             } = event
             {
-                if let Some(vk) = input.virtual_keycode {
-                    if input.state == ElementState::Pressed {
-                        self.keys_down.entry(vk).or_insert(KeyState { ticks: 0 });
-                    } else {
-                        self.keys_down.remove(&vk);
-                    }
+                if event.state == ElementState::Pressed {
+                    self.keys_down
+                        .entry(event.physical_key)
+                        .or_insert(KeyState { ticks: 0 });
+                } else {
+                    self.keys_down.remove(&event.physical_key);
                 }
             }
         }
@@ -56,7 +58,7 @@ impl KeyboardState {
 
 #[derive(Clone, Copy)]
 pub struct MouseState {
-    pub physical_position: PhysicalPosition<f64>,
+    pub physical_position: PhysicalPosition,
     pub delta: Vec2,
     pub buttons_held: u32,
     pub buttons_pressed: u32,
@@ -76,7 +78,7 @@ impl Default for MouseState {
 }
 
 impl MouseState {
-    pub fn update(&mut self, events: &[Event<'_, ()>]) {
+    pub fn update(&mut self, events: &[Event<()>]) {
         self.buttons_pressed = 0;
         self.buttons_released = 0;
         self.delta = Vec2::ZERO;
@@ -147,7 +149,7 @@ struct KeyMapState {
 }
 
 pub struct KeyboardMap {
-    bindings: Vec<(VirtualKeyCode, KeyMapState)>,
+    bindings: Vec<(PhysicalKey, KeyMapState)>,
 }
 
 impl Default for KeyboardMap {
@@ -163,7 +165,7 @@ impl KeyboardMap {
         }
     }
 
-    pub fn bind(mut self, key: VirtualKeyCode, map: KeyMap) -> Self {
+    pub fn bind(mut self, key: PhysicalKey, map: KeyMap) -> Self {
         self.bindings.push((
             key,
             KeyMapState {

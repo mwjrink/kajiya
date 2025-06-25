@@ -1,7 +1,6 @@
 use std::path::PathBuf;
 
 use kajiya::world_renderer::InstanceHandle;
-use kajiya_simple::{Affine3A, EulerRot, Mat2, Quat, Vec2, Vec3, Vec3Swizzles};
 
 use crate::{misc::smoothstep, sequence::Sequence};
 

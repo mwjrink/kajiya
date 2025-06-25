@@ -9,10 +9,10 @@ mod sequence;
 
 use std::{
     fs::File,
+    io::Write,
     path::{Path, PathBuf},
 };
 
-use kajiya_simple::*;
 use opt::*;
 use persisted::*;
 use runtime::*;
@@ -42,7 +42,11 @@ impl AppState {
                     .with_decorations(!opt.no_window_decorations),
             )?;
 
-        let runtime = RuntimeState::new(&mut persisted, &mut kajiya.world_renderer, opt);
+        let runtime = RuntimeState::new(
+            &mut persisted,
+            &mut kajiya.app.world_renderer.as_mut().unwrap(),
+            opt,
+        );
 
         Ok(Self {
             persisted,
@@ -54,7 +58,7 @@ impl AppState {
     fn load_scene(&mut self, scene_path: &Path) -> anyhow::Result<()> {
         self.runtime.load_scene(
             &mut self.persisted,
-            &mut self.kajiya.world_renderer,
+            &mut self.kajiya.app.world_renderer.as_mut().unwrap(),
             scene_path,
         )
     }
@@ -62,7 +66,7 @@ impl AppState {
     fn add_standalone_mesh(&mut self, path: PathBuf, mesh_scale: f32) -> anyhow::Result<()> {
         self.runtime.add_mesh_instance(
             &mut self.persisted,
-            &mut self.kajiya.world_renderer,
+            &mut self.kajiya.app.world_renderer.as_mut().unwrap(),
             MeshSource::File(path),
             SceneElementTransform {
                 position: Vec3::ZERO,
@@ -79,7 +83,8 @@ impl AppState {
             kajiya,
         } = self;
 
-        kajiya.run(|ctx| runtime.frame(ctx, &mut persisted))?;
+        let func = |ctx| runtime.frame(ctx, &mut persisted);
+        kajiya.run(func)?;
 
         Ok(persisted)
     }
@@ -112,11 +117,11 @@ fn main() -> anyhow::Result<()> {
 
     let state = state.run()?;
 
-    ron::ser::to_writer_pretty(
-        File::create(APP_STATE_CONFIG_FILE_PATH)?,
-        &state,
-        Default::default(),
-    )?;
+    let mut data = String::new();
+    ron::ser::to_writer_pretty(&mut data, &state, Default::default())?;
+    let mut file = File::create(APP_STATE_CONFIG_FILE_PATH)?;
+    file.write(data.as_bytes());
+    file.flush();
 
     Ok(())
 }

@@ -14,7 +14,7 @@ kajiya-simple = { path = "../../lib/kajiya-simple", features = [
 kajiya-asset-pipe = { path = "../../lib/kajiya-asset-pipe" }
 
 anyhow = "1.0"
-dolly = "=0.4.0"
+dolly = { path = "/home/max/dev/dolly" }
 imgui = "0.12"
 log = "0.4"
 ron = "0.10.1"
